@@ -1,8 +1,8 @@
-name: Build Android APK
+name: Android CI Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "**" ]
   workflow_dispatch:
 
 jobs:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repository code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -19,9 +19,10 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install and Run Gradle 8.5
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
-          unzip -q gradle-8.5-bin.zip
-          ./gradle-8.5/bin/gradle --version
-          ./gradle-8.5/bin/gradle assembleDebug --no-daemon --stacktrace
+      - name: Install and Setup Gradle 8.5
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: Build with Standalone Gradle 8.5
+        run: gradle assembleDebug --stacktrace --info
