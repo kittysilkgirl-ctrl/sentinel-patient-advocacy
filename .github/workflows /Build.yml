@@ -25,4 +25,3 @@ jobs:
           unzip -q gradle-8.5-bin.zip
           ./gradle-8.5/bin/gradle --version
           ./gradle-8.5/bin/gradle assembleDebug --no-daemon --stacktrace
-          
