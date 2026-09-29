@@ -1,4 +1,4 @@
-package com.sentinel.patientadvocacy
+package com.advocacy.app
 
 import android.Manifest
 import android.content.Intent
@@ -21,8 +21,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,7 +43,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
         tts = TextToSpeech(this, this)
 
@@ -101,7 +99,6 @@ fun SentinelApp(
     var userInput by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
 
-    // Audio Record Permission Handler
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -110,7 +107,6 @@ fun SentinelApp(
         }
     }
 
-    // Set up Speech Recognition Listener
     DisposableEffect(Unit) {
         val listener = object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
@@ -136,7 +132,7 @@ fun SentinelApp(
             override fun onPartialResults(partialResults: Bundle?) {
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
-                    userInput = matches[0] // Real-time live streaming update
+                    userInput = matches[0]
                 }
             }
 
@@ -298,11 +294,12 @@ fun InputScreen(
                     .background(if (isListening) Color(0xFFE11D48) else Color(0xFFEEF2FF))
                     .clickable { onMicClick() }
             ) {
-                Icon(
-                    imageVector = if (isListening) Icons.Default.MicOff else Icons.Default.Mic,
-                    contentDescription = "Microphone",
-                    tint = if (isListening) Color.White else Color(0xFF4F46E5),
-                    modifier = Modifier.size(32.dp)
+                // Vector fallback UI representation for Mic
+                Box(
+                    modifier = Modifier
+                        .size(18.dp, 28.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (isListening) Color.White else Color(0xFF4F46E5))
                 )
             }
 
@@ -392,7 +389,6 @@ fun AlertScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Dynamic User Message Box
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -409,7 +405,6 @@ fun AlertScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Timeline Container
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -448,7 +443,6 @@ fun AlertScreen(
             }
         }
 
-        // Action Buttons
         Column(modifier = Modifier.fillMaxWidth()) {
             Button(
                 onClick = onSoundAlarm,
