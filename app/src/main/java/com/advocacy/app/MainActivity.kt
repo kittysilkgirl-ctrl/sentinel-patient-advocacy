@@ -8,6 +8,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,17 +16,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,7 +38,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// --- Color Palette ---
+// --- High Contrast & Accessible Color Palette ---
 val CriticalRed = Color(0xFFC40C00)
 val CriticalBlack = Color(0xFF0D0D0D)
 val CardBackgroundWhite = Color(0xFFFFFFFF)
@@ -100,7 +103,6 @@ fun NurseAlertFlowContainer(
         mutableStateOf("I'm thinking of hurting myself, I have these thoughts for 6 hrs")
     }
 
-    // Default timeline context reflecting patient journal / intake events
     val timelineEvents = remember {
         mutableStateListOf(
             TimelineEvent("10:18 AM", "Parents called"),
@@ -137,7 +139,7 @@ fun NurseAlertFlowContainer(
                         onTriggerVerbalAlarm(speech)
                     },
                     onDispatchContacts = {
-                        // Hook for SMS / advocacy webhook notification
+                        // Hook for SMS / emergency dispatch
                     }
                 )
             }
@@ -146,7 +148,7 @@ fun NurseAlertFlowContainer(
 }
 
 /**
- * Stage 1: Warm, calm pre-alarm input screen with voice & text dual entry
+ * Stage 1: Warm, friendly pre-alarm input screen with voice & text entry
  */
 @Composable
 fun PreAlarmIntakeScreen(
@@ -211,7 +213,6 @@ fun PreAlarmIntakeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Dual input trigger: Voice recorder button
             IconButton(
                 onClick = { isRecording = !isRecording },
                 modifier = Modifier
@@ -221,11 +222,9 @@ fun PreAlarmIntakeScreen(
                         shape = CircleShape
                     )
             ) {
-                Icon(
-                    imageVector = Icons.Default.Mic,
-                    contentDescription = "Microphone input",
+                MicrophoneVector(
                     tint = if (isRecording) CardBackgroundWhite else SoftPrimary,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
 
@@ -266,7 +265,7 @@ fun PreAlarmIntakeScreen(
 }
 
 /**
- * Stage 2: Production-grade Critical Nurse Alert Screen
+ * Stage 2: Production Critical Nurse Alert Screen
  */
 @Composable
 fun CriticalAlertScreen(
@@ -289,6 +288,303 @@ fun CriticalAlertScreen(
         // Badge: CRITICAL ALERT
         Surface(
             color = CriticalBlack,
+            shape = RoundedCornerShape(50),
+            modifier = Modifier.wrapContentSize()
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = CardBackgroundWhite,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "CRITICAL ALERT",
+                    color = CardBackgroundWhite,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Headline
+        Text(
+            text = "URGENT:\nHelp me Please",
+            color = CardBackgroundWhite,
+            fontSize = 38.sp,
+            fontWeight = FontWeight.Black,
+            lineHeight = 44.sp,
+            textAlign = TextAlign.Start,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Core State / Distress Message
+        Text(
+            text = distressMessage,
+            color = CardBackgroundWhite.copy(alpha = 0.95f),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
+            lineHeight = 22.sp,
+            textAlign = TextAlign.Start,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Recent Events Timeline Card
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false),
+            shape = RoundedCornerShape(18.dp),
+            color = CardBackgroundWhite,
+            shadowElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Text(
+                    text = "RECENT EVENTS",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp,
+                    color = TextDark
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(events) { item ->
+                        TimelineRow(event = item)
+                        HorizontalDivider(
+                            modifier = Modifier.padding(top = 10.dp),
+                            thickness = 1.dp,
+                            color = DividerLight
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Action 1: Sound Verbal Alarm
+        Button(
+            onClick = onSoundAlarm,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = CardBackgroundWhite),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                SpeakerVector(tint = TextDark, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Sound Verbal Alarm",
+                    color = TextDark,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Action 2: Dispatch Emergency Contacts
+        Button(
+            onClick = onDispatchContacts,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = CriticalBlack),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Call,
+                    contentDescription = null,
+                    tint = CardBackgroundWhite,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Dispatch Emergency Contacts",
+                    color = CardBackgroundWhite,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun TimelineRow(event: TimelineEvent) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ClockVector(
+            tint = TextDark,
+            modifier = Modifier.size(16.dp)
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Text(
+            text = event.time,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextDark,
+            modifier = Modifier.width(76.dp)
+        )
+
+        VerticalDivider(
+            modifier = Modifier
+                .height(14.dp)
+                .padding(horizontal = 8.dp),
+            thickness = 1.dp,
+            color = Color.LightGray
+        )
+
+        Text(
+            text = event.description,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
+            color = TextDark
+        )
+    }
+}
+
+// --- Built-in Vectors (Zero External Dependencies) ---
+
+@Composable
+fun MicrophoneVector(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        // Mic body
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.32f, h * 0.10f),
+            size = Size(w * 0.36f, h * 0.50f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.18f, w * 0.18f)
+        )
+        // Mic cradle
+        drawArc(
+            color = tint,
+            startAngle = 0f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(w * 0.20f, h * 0.28f),
+            size = Size(w * 0.60f, h * 0.42f),
+            style = Stroke(width = w * 0.08f, cap = StrokeCap.Round)
+        )
+        // Stand base
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.50f, h * 0.70f),
+            end = Offset(w * 0.50f, h * 0.90f),
+            strokeWidth = w * 0.08f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.32f, h * 0.90f),
+            end = Offset(w * 0.68f, h * 0.90f),
+            strokeWidth = w * 0.08f,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun ClockVector(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val center = Offset(w / 2f, h / 2f)
+        val radius = (w / 2f) * 0.85f
+
+        drawCircle(
+            color = tint,
+            radius = radius,
+            center = center,
+            style = Stroke(width = w * 0.1f)
+        )
+        // Clock hands
+        drawLine(
+            color = tint,
+            start = center,
+            end = Offset(center.x, center.y - radius * 0.55f),
+            strokeWidth = w * 0.1f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = center,
+            end = Offset(center.x + radius * 0.45f, center.y),
+            strokeWidth = w * 0.1f,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun SpeakerVector(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.15f, h * 0.38f)
+            lineTo(w * 0.35f, h * 0.38f)
+            lineTo(w * 0.60f, h * 0.18f)
+            lineTo(w * 0.60f, h * 0.82f)
+            lineTo(w * 0.35f, h * 0.62f)
+            lineTo(w * 0.15f, h * 0.62f)
+            close()
+        }
+        drawPath(path = path, color = tint)
+
+        // Sound waves
+        drawArc(
+            color = tint,
+            startAngle = -45f,
+            sweepAngle = 90f,
+            useCenter = false,
+            topLeft = Offset(w * 0.52f, h * 0.28f),
+            size = Size(w * 0.35f, h * 0.44f),
+            style = Stroke(width = w * 0.08f, cap = StrokeCap.Round)
+        )
+    }
+}
+     color = CriticalBlack,
             shape = RoundedCornerShape(50),
             modifier = Modifier.wrapContentSize()
         ) {
