@@ -1,109 +1,156 @@
-import React, { useState } from 'react';
+package com.yourpackage.name // keep your actual package statement at the top
 
-export const ThoughtCard = ({ 
-  initialText = "", 
-  onSaveEntry, 
-  onReleaseEntry, 
-  onShareWithTeam 
-}) => {
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [thoughtContent, setThoughtContent] = useState(initialText);
-  const [holdingBuffer, setHoldingBuffer] = useState(initialText);
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
-  const startChangingWords = () => {
-    setHoldingBuffer(thoughtContent);
-    setIsUpdating(true);
-  };
+@Composable
+fun ThoughtCard(
+    initialText: String = "",
+    onKeepWords: (String) -> Unit = {},
+    onLetThisGo: () -> Unit = {},
+    onShareWhenReady: ((String) -> Unit)? = null
+) {
+    var isUpdating by remember { mutableStateOf(false) }
+    var thoughtContent by remember { mutableStateOf(initialText) }
+    var holdingBuffer by remember { mutableStateOf(initialText) }
 
-  const keepTheseWords = () => {
-    setThoughtContent(holdingBuffer);
-    setIsUpdating(false);
-    if (onSaveEntry) {
-      onSaveEntry(holdingBuffer);
+    val slate800 = Color(0xFF1E293B)
+    val slate700 = Color(0xFF334155)
+    val slate900 = Color(0xFF0F172A)
+    val teal700 = Color(0xFF0F766E)
+    val rose900 = Color(0xFF4C0519)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .border(1.dp, slate700, RoundedCornerShape(12.dp)),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = slate800)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            if (isUpdating) {
+                Text(
+                    text = "Thoughts in progress",
+                    fontSize = 14.dp.value.sp,
+                    color = Color(0xFFCBD5E1),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                OutlinedTextField(
+                    value = holdingBuffer,
+                    onValueChange = { holdingBuffer = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                        .background(slate900, RoundedCornerShape(8.dp)),
+                    placeholder = {
+                        Text(
+                            text = "Put down whatever is on your mind right now...",
+                            color = Color(0xFF64748B)
+                        )
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color(0xFFF1F5F9),
+                        unfocusedTextColor = Color(0xFFF1F5F9),
+                        focusedBorderColor = Color(0xFF14B8A6),
+                        unfocusedBorderColor = slate700
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            thoughtContent = holdingBuffer
+                            isUpdating = false
+                            onKeepWords(holdingBuffer)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = teal700)
+                    ) {
+                        Text("Keep this", color = Color.White)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            holdingBuffer = thoughtContent
+                            isUpdating = false
+                        }
+                    ) {
+                        Text("Leave it for now", color = Color(0xFFCBD5E1))
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    Button(
+                        onClick = {
+                            thoughtContent = ""
+                            holdingBuffer = ""
+                            isUpdating = false
+                            onLetThisGo()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = rose900)
+                    ) {
+                        Text("Let this go", color = Color(0xFFFDA4AF))
+                    }
+                }
+            } else {
+                if (thoughtContent.isBlank()) {
+                    Text(
+                        text = "A quiet space for your thoughts. Nothing written down yet.",
+                        fontStyle = FontStyle.Italic,
+                        color = Color(0xFF64748B),
+                        fontSize = 15.sp
+                    )
+                } else {
+                    Text(
+                        text = thoughtContent,
+                        color = Color(0xFFF1F5F9),
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = slate700.copy(alpha = 0.6f))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            holdingBuffer = thoughtContent
+                            isUpdating = true
+                        }
+                    ) {
+                        Text("Change my words", color = Color(0xFFCBD5E1))
+                    }
+
+                    if (onShareWhenReady != null && thoughtContent.isNotBlank()) {
+                        Button(
+                            onClick = { onShareWhenReady(thoughtContent) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0369A1))
+                        ) {
+                            Text("Share when ready", color = Color(0xFFBAE6FD))
+                        }
+                    }
+                }
+            }
+        }
     }
-  };
-
-  const leaveItForNow = () => {
-    setHoldingBuffer(thoughtContent);
-    setIsUpdating(false);
-  };
-
-  const letThisGo = () => {
-    setThoughtContent("");
-    setHoldingBuffer("");
-    setIsUpdating(false);
-    if (onReleaseEntry) {
-      onReleaseEntry();
-    }
-  };
-
-  return (
-    <div className="thought-container p-4 rounded-xl bg-slate-800 text-slate-100 border border-slate-700 max-w-lg my-2 shadow-sm">
-      {isUpdating ? (
-        <div className="space-y-3">
-          <label className="block text-sm font-medium text-slate-300">
-            Thoughts in progress
-          </label>
-          <textarea
-            className="w-full p-3 rounded-lg bg-slate-900 border border-slate-600 text-slate-100 focus:outline-none focus:border-teal-500 transition-colors resize-none"
-            rows={4}
-            value={holdingBuffer}
-            onChange={(e) => setHoldingBuffer(e.target.value)}
-            placeholder="Put down whatever is on your mind right now..."
-          />
-          <div className="flex flex-wrap gap-2 pt-1">
-            <button
-              type="button"
-              onClick={keepTheseWords}
-              className="px-4 py-2 bg-teal-700 hover:bg-teal-600 rounded-lg text-sm font-medium transition-colors"
-            >
-              Keep this
-            </button>
-            <button
-              type="button"
-              onClick={leaveItForNow}
-              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium text-slate-300 transition-colors"
-            >
-              Leave it for now
-            </button>
-            <button
-              type="button"
-              onClick={letThisGo}
-              className="px-4 py-2 bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/50 rounded-lg text-sm font-medium text-rose-300 transition-colors ml-auto"
-            >
-              Let this go
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-base text-slate-200 whitespace-pre-wrap leading-relaxed">
-            {thoughtContent || (
-              <span className="italic text-slate-500">
-                A quiet space for your thoughts. Nothing written down yet.
-              </span>
-            )}
-          </p>
-          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-700/60">
-            <button
-              type="button"
-              onClick={startChangingWords}
-              className="px-3 py-1.5 bg-slate-700/70 hover:bg-slate-700 rounded-md text-xs font-medium text-slate-200 transition-colors"
-            >
-              Change my words
-            </button>
-            {onShareWithTeam && thoughtContent && (
-              <button
-                type="button"
-                onClick={() => onShareWithTeam(thoughtContent)}
-                className="px-3 py-1.5 bg-sky-900/60 hover:bg-sky-800/80 border border-sky-700/50 rounded-md text-xs font-medium text-sky-200 transition-colors"
-              >
-                Share when ready
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+}
