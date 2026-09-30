@@ -1,8 +1,10 @@
 package com.advocacy.app
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -22,7 +24,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,6 +41,92 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import java.util.Locale
 
+// ==========================================
+// DRIVE-COMPATIBLE STORAGE SCHEMA
+// ==========================================
+data class SentinelSyncPayload(
+    val version: Int = 1,
+    val lastModified: Long = System.currentTimeMillis(),
+    val contactName: String = "",
+    val contactPhone: String = "",
+    val quickAnchors: List<String> = listOf(
+        "I need someone to sit with me",
+        "I feel overwhelmed",
+        "I am in severe pain",
+        "I cannot speak right now"
+    )
+) {
+    fun toJson(): String {
+        val escapedName = contactName.replace("\"", "\\\"")
+        val escapedPhone = contactPhone.replace("\"", "\\\"")
+        val anchorsJson = quickAnchors.joinToString(
+            separator = ",",
+            prefix = "[",
+            postfix = "]"
+        ) { "\"${it.replace("\"", "\\\"")}\"" }
+
+        return """
+            {
+              "version": $version,
+              "lastModified": $lastModified,
+              "contactName": "$escapedName",
+              "contactPhone": "$escapedPhone",
+              "quickAnchors": $anchorsJson
+            }
+        """.trimIndent()
+    }
+
+    companion object {
+        fun fromJson(json: String): SentinelSyncPayload {
+            val name = Regex("\"contactName\":\\s*\"(.*?)\"").find(json)?.groupValues?.get(1) ?: ""
+            val phone = Regex("\"contactPhone\":\\s*\"(.*?)\"").find(json)?.groupValues?.get(1) ?: ""
+            val anchorsBlock = Regex("\"quickAnchors\":\\s*\\[(.*?)\\]").find(json)?.groupValues?.get(1)
+            val anchors = if (!anchorsBlock.isNullOrBlank()) {
+                Regex("\"(.*?)\"").findAll(anchorsBlock).map { it.groupValues[1] }.toList()
+            } else {
+                listOf(
+                    "I need someone to sit with me",
+                    "I feel overwhelmed",
+                    "I am in severe pain",
+                    "I cannot speak right now"
+                )
+            }
+
+            return SentinelSyncPayload(
+                contactName = name,
+                contactPhone = phone,
+                quickAnchors = anchors
+            )
+        }
+    }
+}
+
+class SentinelStorageManager(private val context: Context) {
+    private val fileName = "sentinel_backup.json"
+
+    fun savePayload(payload: SentinelSyncPayload) {
+        try {
+            context.openFileOutput(fileName, Context.MODE_PRIVATE).use { output ->
+                output.write(payload.toJson().toByteArray())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun readPayload(): SentinelSyncPayload {
+        return try {
+            val content = context.openFileInput(fileName).bufferedReader().use { it.readText() }
+            SentinelSyncPayload.fromJson(content)
+        } catch (e: Exception) {
+            SentinelSyncPayload()
+        }
+    }
+}
+
+// ==========================================
+// MAIN ACTIVITY
+// ==========================================
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var speechRecognizer: SpeechRecognizer
@@ -86,7 +176,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 }
 
 enum class ScreenState {
-    INPUT, ALERT
+    INPUT, ALERT, REGISTER_CONTACT
 }
 
 data class TimelineItem(val time: String, val description: String)
@@ -98,14 +188,17 @@ fun SentinelApp(
 ) {
     val context = LocalContext.current
     val mainExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
+    val storageManager = remember(context) { SentinelStorageManager(context) }
+
     var currentScreen by remember { mutableStateOf(ScreenState.INPUT) }
     var userInput by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
+    var payload by remember { mutableStateOf(storageManager.readPayload()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (!isGranted) {
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.RECORD_AUDIO] == false) {
             Toast.makeText(context, "Microphone permission required for speech input", Toast.LENGTH_SHORT).show()
         }
     }
@@ -113,9 +206,7 @@ fun SentinelApp(
     DisposableEffect(speechRecognizer) {
         val listener = object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
-                mainExecutor.execute {
-                    isListening = true
-                }
+                mainExecutor.execute { isListening = true }
             }
 
             override fun onBeginningOfSpeech() {}
@@ -123,15 +214,11 @@ fun SentinelApp(
             override fun onBufferReceived(buffer: ByteArray?) {}
 
             override fun onEndOfSpeech() {
-                mainExecutor.execute {
-                    isListening = false
-                }
+                mainExecutor.execute { isListening = false }
             }
 
             override fun onError(error: Int) {
-                mainExecutor.execute {
-                    isListening = false
-                }
+                mainExecutor.execute { isListening = false }
             }
 
             override fun onResults(results: Bundle?) {
@@ -170,7 +257,7 @@ fun SentinelApp(
         ) == PackageManager.PERMISSION_GRANTED
 
         if (!hasPermission) {
-            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            permissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
         } else {
             if (isListening) {
                 speechRecognizer.stopListening()
@@ -188,6 +275,25 @@ fun SentinelApp(
         }
     }
 
+    val dispatchEmergencyAlert = {
+        if (payload.contactPhone.isBlank()) {
+            Toast.makeText(context, "No emergency contact saved. Please enter contact details.", Toast.LENGTH_LONG).show()
+            currentScreen = ScreenState.REGISTER_CONTACT
+        } else {
+            val alertMessage = "URGENT SENTINEL ALERT: $userInput"
+            try {
+                val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
+                    data = Uri.parse("smsto:${payload.contactPhone}")
+                    putExtra("sms_body", alertMessage)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(smsIntent)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Could not open messaging: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     val sampleTimeline = listOf(
         TimelineItem("10:18 AM", "Parents called"),
         TimelineItem("10:05 AM", "Played game"),
@@ -197,14 +303,16 @@ fun SentinelApp(
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = if (currentScreen == ScreenState.INPUT) Color(0xFFF1F5F9) else Color(0xFFB91C1C)
+        color = if (currentScreen == ScreenState.ALERT) Color(0xFFB91C1C) else Color(0xFFF1F5F9)
     ) {
         when (currentScreen) {
             ScreenState.INPUT -> InputScreen(
                 userInput = userInput,
                 onUserInputChange = { userInput = it },
+                quickAnchors = payload.quickAnchors,
                 isListening = isListening,
                 onMicClick = { toggleListening() },
+                onOpenSettings = { currentScreen = ScreenState.REGISTER_CONTACT },
                 onContinue = {
                     if (isListening) {
                         speechRecognizer.stopListening()
@@ -213,12 +321,139 @@ fun SentinelApp(
                     currentScreen = ScreenState.ALERT
                 }
             )
+
             ScreenState.ALERT -> AlertScreen(
                 patientMessage = userInput,
                 timeline = sampleTimeline,
                 onBackToEdit = { currentScreen = ScreenState.INPUT },
-                onSoundAlarm = { onSpeak(userInput) }
+                onSoundAlarm = { onSpeak(userInput) },
+                onDispatch = { dispatchEmergencyAlert() }
             )
+
+            ScreenState.REGISTER_CONTACT -> ContactRegistrationScreen(
+                initialName = payload.contactName,
+                initialPhone = payload.contactPhone,
+                onSave = { name, phone ->
+                    val updated = payload.copy(
+                        contactName = name,
+                        contactPhone = phone,
+                        lastModified = System.currentTimeMillis()
+                    )
+                    storageManager.savePayload(updated)
+                    payload = updated
+                    Toast.makeText(context, "Contact saved locally", Toast.LENGTH_SHORT).show()
+                    currentScreen = ScreenState.INPUT
+                },
+                onCancel = { currentScreen = ScreenState.INPUT }
+            )
+        }
+    }
+}
+
+@Composable
+fun ContactRegistrationScreen(
+    initialName: String,
+    initialPhone: String,
+    onSave: (String, String) -> Unit,
+    onCancel: () -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var phone by remember { mutableStateOf(initialPhone) }
+
+    val warmBackground = Color(0xFFF1F5F9)
+    val textPrimary = Color(0xFF0F172A)
+    val textSecondary = Color(0xFF475569)
+    val softCardBg = Color(0xFFFFFFFF)
+    val accentNavy = Color(0xFF1E293B)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(warmBackground)
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onCancel() }
+            ) {
+                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back", tint = textSecondary)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Back", color = textSecondary, fontSize = 14.sp)
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Emergency Contact",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = textPrimary
+            )
+
+            Text(
+                text = "When an alert is dispatched, Sentinel will immediately prepare a direct message to this person.",
+                fontSize = 14.sp,
+                color = textSecondary,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
+            )
+
+            Text(
+                text = "FULL NAME / RELATION",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = textSecondary
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = { Text("e.g. Sarah, Advocate, Sister", color = Color(0xFF94A3B8)) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = softCardBg,
+                    unfocusedContainerColor = softCardBg,
+                    focusedBorderColor = Color(0xFF94A3B8),
+                    unfocusedBorderColor = Color(0xFFCBD5E1)
+                )
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "PHONE NUMBER",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = textSecondary
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { phone = it },
+                placeholder = { Text("e.g. +447123456789", color = Color(0xFF94A3B8)) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = softCardBg,
+                    unfocusedContainerColor = softCardBg,
+                    focusedBorderColor = Color(0xFF94A3B8),
+                    unfocusedBorderColor = Color(0xFFCBD5E1)
+                )
+            )
+        }
+
+        Button(
+            onClick = { onSave(name, phone) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = accentNavy)
+        ) {
+            Text("Save Emergency Contact", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
     }
 }
@@ -227,23 +462,18 @@ fun SentinelApp(
 fun InputScreen(
     userInput: String,
     onUserInputChange: (String) -> Unit,
+    quickAnchors: List<String>,
     isListening: Boolean,
     onMicClick: () -> Unit,
+    onOpenSettings: () -> Unit,
     onContinue: () -> Unit
 ) {
     val warmBackground = Color(0xFFF1F5F9)
     val textPrimary = Color(0xFF0F172A)
     val textSecondary = Color(0xFF475569)
     val softCardBg = Color(0xFFFFFFFF)
-    val listeningColor = Color(0xFF0D9488) // Calming clinical teal
+    val listeningColor = Color(0xFF0D9488)
     val accentNavy = Color(0xFF1E293B)
-
-    val quickAnchors = listOf(
-        "I need someone to sit with me",
-        "I feel overwhelmed",
-        "I am in severe pain",
-        "I cannot speak right now"
-    )
 
     Column(
         modifier = Modifier
@@ -254,13 +484,27 @@ fun InputScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = "SENTINEL ADVOCACY",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.5.sp,
-                color = Color(0xFF64748B)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "SENTINEL ADVOCACY",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp,
+                    color = Color(0xFF64748B)
+                )
+
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Contact Configuration",
+                        tint = textSecondary
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -280,7 +524,6 @@ fun InputScreen(
                 modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
             )
 
-            // Quick Anchors: One-tap choices when speech/typing fails
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(bottom = 12.dp)
@@ -347,7 +590,6 @@ fun InputScreen(
             }
         }
 
-        // Expanded touch target zone for tremor/stress accessibility
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -422,7 +664,8 @@ fun AlertScreen(
     patientMessage: String,
     timeline: List<TimelineItem>,
     onBackToEdit: () -> Unit,
-    onSoundAlarm: () -> Unit
+    onSoundAlarm: () -> Unit,
+    onDispatch: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -551,7 +794,7 @@ fun AlertScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             OutlinedButton(
-                onClick = { /* Emergency dispatch logic */ },
+                onClick = onDispatch,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
