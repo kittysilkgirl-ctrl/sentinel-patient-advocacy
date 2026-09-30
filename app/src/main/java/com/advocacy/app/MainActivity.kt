@@ -95,6 +95,7 @@ fun SentinelApp(
     onSpeak: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val mainExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
     var currentScreen by remember { mutableStateOf(ScreenState.INPUT) }
     var userInput by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
@@ -107,32 +108,46 @@ fun SentinelApp(
         }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(speechRecognizer) {
         val listener = object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onReadyForSpeech(params: Bundle?) {
+                mainExecutor.execute {
+                    isListening = true
+                }
+            }
+
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
+
             override fun onEndOfSpeech() {
-                isListening = false
+                mainExecutor.execute {
+                    isListening = false
+                }
             }
 
             override fun onError(error: Int) {
-                isListening = false
+                mainExecutor.execute {
+                    isListening = false
+                }
             }
 
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (!matches.isNullOrEmpty()) {
-                    userInput = matches[0]
+                mainExecutor.execute {
+                    if (!matches.isNullOrEmpty()) {
+                        userInput = matches[0]
+                    }
+                    isListening = false
                 }
-                isListening = false
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (!matches.isNullOrEmpty()) {
-                    userInput = matches[0]
+                mainExecutor.execute {
+                    if (!matches.isNullOrEmpty()) {
+                        userInput = matches[0]
+                    }
                 }
             }
 
@@ -161,8 +176,9 @@ fun SentinelApp(
             } else {
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.UK.toString())
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 }
                 speechRecognizer.startListening(intent)
                 isListening = true
@@ -294,7 +310,6 @@ fun InputScreen(
                     .background(if (isListening) Color(0xFFE11D48) else Color(0xFFEEF2FF))
                     .clickable { onMicClick() }
             ) {
-                // Vector fallback UI representation for Mic
                 Box(
                     modifier = Modifier
                         .size(18.dp, 28.dp)
