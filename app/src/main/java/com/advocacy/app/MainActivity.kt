@@ -17,6 +17,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -24,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Settings
@@ -310,6 +312,15 @@ fun SentinelApp(
                 userInput = userInput,
                 onUserInputChange = { userInput = it },
                 quickAnchors = payload.quickAnchors,
+                onAddAnchor = { newAnchor ->
+                    val updatedAnchors = payload.quickAnchors + newAnchor
+                    val updatedPayload = payload.copy(
+                        quickAnchors = updatedAnchors,
+                        lastModified = System.currentTimeMillis()
+                    )
+                    storageManager.savePayload(updatedPayload)
+                    payload = updatedPayload
+                },
                 isListening = isListening,
                 onMicClick = { toggleListening() },
                 onOpenSettings = { currentScreen = ScreenState.REGISTER_CONTACT },
@@ -326,6 +337,10 @@ fun SentinelApp(
                 patientMessage = userInput,
                 timeline = sampleTimeline,
                 onBackToEdit = { currentScreen = ScreenState.INPUT },
+                onDismissAlert = {
+                    userInput = ""
+                    currentScreen = ScreenState.INPUT
+                },
                 onSoundAlarm = { onSpeak(userInput) },
                 onDispatch = { dispatchEmergencyAlert() }
             )
@@ -463,17 +478,55 @@ fun InputScreen(
     userInput: String,
     onUserInputChange: (String) -> Unit,
     quickAnchors: List<String>,
+    onAddAnchor: (String) -> Unit,
     isListening: Boolean,
     onMicClick: () -> Unit,
     onOpenSettings: () -> Unit,
     onContinue: () -> Unit
 ) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    var newAnchorText by remember { mutableStateOf("") }
+
     val warmBackground = Color(0xFFF1F5F9)
     val textPrimary = Color(0xFF0F172A)
     val textSecondary = Color(0xFF475569)
     val softCardBg = Color(0xFFFFFFFF)
     val listeningColor = Color(0xFF0D9488)
     val accentNavy = Color(0xFF1E293B)
+
+    if (showAddDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("New Grounding Anchor", fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = newAnchorText,
+                    onValueChange = { newAnchorText = it },
+                    placeholder = { Text("e.g. Please bring water") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newAnchorText.isNotBlank()) {
+                            onAddAnchor(newAnchorText.trim())
+                            newAnchorText = ""
+                            showAddDialog = false
+                        }
+                    }
+                ) {
+                    Text("Add", fontWeight = FontWeight.Bold, color = accentNavy)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) {
+                    Text("Cancel", color = textSecondary)
+                }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -526,8 +579,36 @@ fun InputScreen(
 
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 12.dp)
             ) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFFE2E8F0),
+                        modifier = Modifier.clickable { showAddDialog = true }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add custom phrase",
+                                tint = accentNavy,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Add",
+                                color = accentNavy,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
                 items(quickAnchors) { anchor ->
                     Surface(
                         shape = RoundedCornerShape(20.dp),
@@ -664,6 +745,7 @@ fun AlertScreen(
     patientMessage: String,
     timeline: List<TimelineItem>,
     onBackToEdit: () -> Unit,
+    onDismissAlert: () -> Unit,
     onSoundAlarm: () -> Unit,
     onDispatch: () -> Unit
 ) {
@@ -804,6 +886,20 @@ fun AlertScreen(
                 Text(
                     text = "Dispatch Emergency Contacts",
                     fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            TextButton(
+                onClick = onDismissAlert,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text(
+                    text = "Dismiss / Return Home",
+                    color = Color(0xFFFCA5A5),
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
             }
