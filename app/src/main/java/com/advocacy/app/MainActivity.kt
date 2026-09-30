@@ -538,4 +538,366 @@ fun InputScreen(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                vertic
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "SENTINEL ADVOCACY",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp,
+                    color = Color(0xFF64748B)
+                )
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Contact Configuration",
+                        tint = textSecondary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Take a breath.\nYou are heard here.",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = textPrimary,
+                lineHeight = 34.sp
+            )
+            Text(
+                text = "Speak or tap below. Whatever you share goes straight to the team.",
+                fontSize = 14.sp,
+                color = textSecondary,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
+            )
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 12.dp)
+            ) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFFE2E8F0),
+                        modifier = Modifier.clickable { showAddDialog = true }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add custom phrase",
+                                tint = accentNavy,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Add phrase",
+                                color = accentNavy,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                items(quickAnchors) { anchor ->
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = softCardBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier.clickable { onUserInputChange(anchor) }
+                    ) {
+                        Text(
+                            text = anchor,
+                            color = accentNavy,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = userInput,
+                onValueChange = onUserInputChange,
+                placeholder = {
+                    Text(
+                        text = if (isListening) "Listening to you now..." else "Tap the circle below to speak, or write here...",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 15.sp
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = softCardBg,
+                    unfocusedContainerColor = softCardBg,
+                    focusedBorderColor = Color(0xFF94A3B8),
+                    unfocusedBorderColor = Color(0xFFCBD5E1)
+                )
+            )
+
+            AnimatedVisibility(visible = isListening) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(listeningColor)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "I'm listening. Take all the time you need.",
+                        color = listeningColor,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(if (isListening) listeningColor.copy(alpha = 0.18f) else Color(0xFFE2E8F0))
+                    .clickable { onMicClick() }
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(if (isListening) listeningColor else accentNavy)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp, 28.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(Color.White)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = if (isListening) "Tap circle to pause" else "Tap circle to speak",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isListening) listeningColor else textSecondary
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Button(
+                onClick = onContinue,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = accentNavy)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "I need immediate help",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Default.ArrowForward,
+                        contentDescription = null,
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AlertScreen(
+    patientMessage: String,
+    timeline: List<TimelineItem>,
+    onBackToEdit: () -> Unit,
+    onDismissAlert: () -> Unit,
+    onSoundAlarm: () -> Unit,
+    onDispatch: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color(0xFF7F1D1D)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFFBBF24),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "CRITICAL ALERT",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                TextButton(onClick = onBackToEdit) {
+                    Text("Change my words", color = Color(0xFFFEE2E2), fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "URGENT:\nHelp me Please",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White,
+                lineHeight = 36.sp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFF991B1B)
+            ) {
+                Text(
+                    text = if (patientMessage.isNotBlank()) patientMessage else "I am feeling in crisis and need urgent support right now.",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "RECENT EVENTS",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF94A3B8)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    timeline.forEach { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = item.time,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF64748B),
+                                modifier = Modifier.width(72.dp)
+                            )
+                            Text(
+                                text = item.description,
+                                fontSize = 14.sp,
+                                color = Color(0xFF1E293B)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onSoundAlarm,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+            ) {
+                Text(
+                    text = "Read my words aloud",
+                    color = Color(0xFF0F172A),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = onDispatch,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+            ) {
+                Text(
+                    text = "Reach out to my person",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            TextButton(
+                onClick = onDismissAlert,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text(
+                    text = "I'm feeling steadier now",
+                    color = Color(0xFFFCA5A5),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
