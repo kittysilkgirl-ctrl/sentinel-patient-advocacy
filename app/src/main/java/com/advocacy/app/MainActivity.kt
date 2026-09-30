@@ -17,6 +17,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -195,7 +197,7 @@ fun SentinelApp(
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = if (currentScreen == ScreenState.INPUT) Color(0xFFF8FAFC) else Color(0xFFB91C1C)
+        color = if (currentScreen == ScreenState.INPUT) Color(0xFFF1F5F9) else Color(0xFFB91C1C)
     ) {
         when (currentScreen) {
             ScreenState.INPUT -> InputScreen(
@@ -229,75 +231,123 @@ fun InputScreen(
     onMicClick: () -> Unit,
     onContinue: () -> Unit
 ) {
+    val warmBackground = Color(0xFFF1F5F9)
+    val textPrimary = Color(0xFF0F172A)
+    val textSecondary = Color(0xFF475569)
+    val softCardBg = Color(0xFFFFFFFF)
+    val listeningColor = Color(0xFF0D9488) // Calming clinical teal
+    val accentNavy = Color(0xFF1E293B)
+
+    val quickAnchors = listOf(
+        "I need someone to sit with me",
+        "I feel overwhelmed",
+        "I am in severe pain",
+        "I cannot speak right now"
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .background(warmBackground)
+            .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = "Sentinel Patient Advocacy",
-                fontSize = 14.sp,
+                text = "SENTINEL ADVOCACY",
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF64748B),
-                modifier = Modifier.padding(bottom = 16.dp)
+                letterSpacing = 1.5.sp,
+                color = Color(0xFF64748B)
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Take a breath.\nYou are heard here.",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = textPrimary,
+                lineHeight = 34.sp
             )
 
             Text(
-                text = "Please tell me what's wrong",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF0F172A),
-                lineHeight = 32.sp
+                text = "Speak or tap below. Whatever you share goes straight to the team.",
+                fontSize = 14.sp,
+                color = textSecondary,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
             )
 
-            Text(
-                text = "Take your time. You can speak or type below, and we'll communicate it directly to the team.",
-                fontSize = 14.sp,
-                color = Color(0xFF475569),
-                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
-            )
+            // Quick Anchors: One-tap choices when speech/typing fails
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(bottom = 12.dp)
+            ) {
+                items(quickAnchors) { anchor ->
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = softCardBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier.clickable { onUserInputChange(anchor) }
+                    ) {
+                        Text(
+                            text = anchor,
+                            color = accentNavy,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = userInput,
                 onValueChange = onUserInputChange,
-                placeholder = { Text("What are you feeling right now?") },
+                placeholder = {
+                    Text(
+                        text = if (isListening) "Listening to you now..." else "Tap the circle below to speak, or write here...",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 15.sp
+                    )
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp),
-                shape = RoundedCornerShape(16.dp),
+                    .height(160.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White,
-                    focusedBorderColor = Color(0xFF4F46E5),
-                    unfocusedBorderColor = Color(0xFFE2E8F0)
+                    focusedContainerColor = softCardBg,
+                    unfocusedContainerColor = softCardBg,
+                    focusedBorderColor = Color(0xFF94A3B8),
+                    unfocusedBorderColor = Color(0xFFCBD5E1)
                 )
             )
 
             AnimatedVisibility(visible = isListening) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 10.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
+                            .size(10.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE11D48))
+                            .background(listeningColor)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Listening & streaming live...",
-                        color = Color(0xFFE11D48),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
+                        text = "I'm listening. Take all the time you need.",
+                        color = listeningColor,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
         }
 
+        // Expanded touch target zone for tremor/stress accessibility
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -305,26 +355,37 @@ fun InputScreen(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(72.dp)
+                    .size(96.dp)
                     .clip(CircleShape)
-                    .background(if (isListening) Color(0xFFE11D48) else Color(0xFFEEF2FF))
+                    .background(if (isListening) listeningColor.copy(alpha = 0.18f) else Color(0xFFE2E8F0))
                     .clickable { onMicClick() }
             ) {
                 Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(18.dp, 28.dp)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(if (isListening) Color.White else Color(0xFF4F46E5))
-                )
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(if (isListening) listeningColor else accentNavy)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp, 28.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(Color.White)
+                    )
+                }
             }
 
+            Spacer(modifier = Modifier.height(8.dp))
+
             Text(
-                text = if (isListening) "Listening... Tap to Stop" else "Tap to Speak",
-                fontSize = 12.sp,
+                text = if (isListening) "Tap circle to pause" else "Tap circle to speak",
+                fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = if (isListening) Color(0xFFE11D48) else Color(0xFF64748B),
-                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
+                color = if (isListening) listeningColor else textSecondary
             )
+
+            Spacer(modifier = Modifier.height(18.dp))
 
             Button(
                 onClick = onContinue,
@@ -332,12 +393,24 @@ fun InputScreen(
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
+                colors = ButtonDefaults.buttonColors(containerColor = accentNavy)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Continue to Alert Screen", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "Send to Alert Screen",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Icon(Icons.Default.ArrowForward, contentDescription = null)
+                    Icon(
+                        imageVector = Icons.Default.ArrowForward,
+                        contentDescription = null,
+                        tint = Color.White
+                    )
                 }
             }
         }
