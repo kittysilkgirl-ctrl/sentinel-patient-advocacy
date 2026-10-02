@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import org.xmlpull.v1.XmlPullParser
 import java.util.Locale
 
 // ==========================================
@@ -52,6 +53,7 @@ data class SentinelSyncPayload(
     val lastModified: Long = System.currentTimeMillis(),
     val contactName: String = "",
     val contactPhone: String = "",
+    val lookName: String = "board",
     val quickAnchors: List<String> = listOf(
         "I need someone to sit with me",
         "I feel overwhelmed",
@@ -68,12 +70,14 @@ data class SentinelSyncPayload(
             postfix = "]"
         ) { "\"${it.replace("\"", "\\\"")}\"" }
 
+        val escapedLook = lookName.replace("\"", "\\\"")
         return """
         {
           "version": $version,
           "lastModified": $lastModified,
           "contactName": "$escapedName",
           "contactPhone": "$escapedPhone",
+          "lookName": "$escapedLook",
           "quickAnchors": $anchorsJson
         }
         """.trimIndent()
@@ -83,6 +87,7 @@ data class SentinelSyncPayload(
         fun fromJson(json: String): SentinelSyncPayload {
             val name = Regex("\"contactName\":\\s*\"(.*?)\"").find(json)?.groupValues?.get(1) ?: ""
             val phone = Regex("\"contactPhone\":\\s*\"(.*?)\"").find(json)?.groupValues?.get(1) ?: ""
+            val look = Regex("\"lookName\":\\s*\"(.*?)\"").find(json)?.groupValues?.get(1) ?: "board"
             val anchorsBlock = Regex("\"quickAnchors\":\\s*\\[(.*?)\\]").find(json)?.groupValues?.get(1)
             val anchors = if (!anchorsBlock.isNullOrBlank()) {
                 Regex("\"(.*?)\"").findAll(anchorsBlock).map { it.groupValues[1] }.toList()
@@ -97,6 +102,7 @@ data class SentinelSyncPayload(
             return SentinelSyncPayload(
                 contactName = name,
                 contactPhone = phone,
+                lookName = look,
                 quickAnchors = anchors
             )
         }
@@ -123,6 +129,74 @@ class SentinelStorageManager(private val context: Context) {
         } catch (e: Exception) {
             SentinelSyncPayload()
         }
+    }
+}
+
+
+data class CalmLook(
+    val name: String,
+    val label: String,
+    val page: Color,
+    val card: Color,
+    val ink: Color,
+    val soft: Color,
+    val accent: Color
+)
+
+private val lookChoices = listOf(
+    "bolt" to "Thunderbolt",
+    "sea" to "Ocean",
+    "board" to "Whiteboard",
+    "bunny" to "Fluffy bunnies"
+)
+
+private fun colorOr(raw: String, fallback: Color): Color {
+    return try {
+        Color(android.graphics.Color.parseColor(raw.trim()))
+    } catch (e: Exception) {
+        fallback
+    }
+}
+
+fun loadCalmLook(context: Context, name: String): CalmLook {
+    val fallback = CalmLook(
+        name = "board",
+        label = "Whiteboard",
+        page = Color(0xFFF7F6F3),
+        card = Color(0xFFFFFFFF),
+        ink = Color(0xFF1E2430),
+        soft = Color(0xFF8A908C),
+        accent = Color(0xFF3D5A80)
+    )
+    val safeName = if (lookChoices.any { it.first == name }) name else "board"
+    val id = context.resources.getIdentifier(safeName, "xml", context.packageName)
+    if (id == 0) return fallback.copy(name = safeName)
+    return try {
+        val parser = context.resources.getXml(id)
+        var label = lookChoices.first { it.first == safeName }.second
+        var page = fallback.page
+        var card = fallback.card
+        var ink = fallback.ink
+        var soft = fallback.soft
+        var accent = fallback.accent
+        var event = parser.eventType
+        while (event != XmlPullParser.END_DOCUMENT) {
+            if (event == XmlPullParser.START_TAG) {
+                when (parser.name) {
+                    "look" -> label = parser.getAttributeValue(null, "label") ?: label
+                    "page" -> page = colorOr(parser.nextText(), page)
+                    "card" -> card = colorOr(parser.nextText(), card)
+                    "ink" -> ink = colorOr(parser.nextText(), ink)
+                    "soft" -> soft = colorOr(parser.nextText(), soft)
+                    "accent" -> accent = colorOr(parser.nextText(), accent)
+                }
+            }
+            event = parser.next()
+        }
+        parser.close()
+        CalmLook(safeName, label, page, card, ink, soft, accent)
+    } catch (e: Exception) {
+        fallback.copy(name = safeName, label = lookChoices.first { it.first == safeName }.second)
     }
 }
 
@@ -195,6 +269,8 @@ fun SentinelApp(
     var userInput by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
     var payload by remember { mutableStateOf(storageManager.readPayload()) }
+    var showLookDialog by remember { mutableStateOf(false) }
+    val look = remember(payload.lookName) { loadCalmLook(context, payload.lookName) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -302,12 +378,56 @@ fun SentinelApp(
         TimelineItem("09:32 AM", "Felt homesick")
     )
 
+    if (showLookDialog) {
+        AlertDialog(
+            onDismissRequest = { showLookDialog = false },
+            title = { Text("Calm look", fontWeight = FontWeight.Bold, color = look.ink) },
+            text = {
+                Column {
+                    lookChoices.forEach { (name, label) ->
+                        TextButton(
+                            onClick = {
+                                val updated = payload.copy(
+                                    lookName = name,
+                                    lastModified = System.currentTimeMillis()
+                                )
+                                storageManager.savePayload(updated)
+                                payload = updated
+                                showLookDialog = false
+                            }
+                        ) {
+                            Text(
+                                text = if (payload.lookName == name) "$label  (this one)" else label,
+                                color = look.ink,
+                                fontWeight = if (payload.lookName == name) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            showLookDialog = false
+                            currentScreen = ScreenState.REGISTER_CONTACT
+                        }
+                    ) {
+                        Text("Support contact", color = look.soft)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLookDialog = false }) {
+                    Text("Leave it for now", color = look.soft)
+                }
+            }
+        )
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = if (currentScreen == ScreenState.ALERT) Color(0xFFB91C1C) else Color(0xFFF1F5F9)
+        color = if (currentScreen == ScreenState.ALERT) Color(0xFFB91C1C) else look.page
     ) {
         when (currentScreen) {
             ScreenState.INPUT -> InputScreen(
+                look = look,
                 userInput = userInput,
                 onUserInputChange = { userInput = it },
                 quickAnchors = payload.quickAnchors,
@@ -322,7 +442,7 @@ fun SentinelApp(
                 },
                 isListening = isListening,
                 onMicClick = { toggleListening() },
-                onOpenSettings = { currentScreen = ScreenState.REGISTER_CONTACT },
+                onOpenLook = { showLookDialog = true },
                 onContinue = {
                     if (isListening) {
                         speechRecognizer.stopListening()
@@ -345,6 +465,7 @@ fun SentinelApp(
             )
 
             ScreenState.REGISTER_CONTACT -> ContactRegistrationScreen(
+                look = look,
                 initialName = payload.contactName,
                 initialPhone = payload.contactPhone,
                 onSave = { name, phone ->
@@ -366,6 +487,7 @@ fun SentinelApp(
 
 @Composable
 fun ContactRegistrationScreen(
+    look: CalmLook,
     initialName: String,
     initialPhone: String,
     onSave: (String, String) -> Unit,
@@ -374,11 +496,11 @@ fun ContactRegistrationScreen(
     var name by remember { mutableStateOf(initialName) }
     var phone by remember { mutableStateOf(initialPhone) }
 
-    val warmBackground = Color(0xFFF1F5F9)
-    val textPrimary = Color(0xFF0F172A)
-    val textSecondary = Color(0xFF475569)
-    val softCardBg = Color(0xFFFFFFFF)
-    val accentNavy = Color(0xFF1E293B)
+    val warmBackground = look.page
+    val textPrimary = look.ink
+    val textSecondary = look.soft
+    val softCardBg = look.card
+    val accentNavy = look.accent
 
     Column(
         modifier = Modifier
@@ -473,24 +595,25 @@ fun ContactRegistrationScreen(
 
 @Composable
 fun InputScreen(
+    look: CalmLook,
     userInput: String,
     onUserInputChange: (String) -> Unit,
     quickAnchors: List<String>,
     onAddAnchor: (String) -> Unit,
     isListening: Boolean,
     onMicClick: () -> Unit,
-    onOpenSettings: () -> Unit,
+    onOpenLook: () -> Unit,
     onContinue: () -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var newAnchorText by remember { mutableStateOf("") }
 
-    val warmBackground = Color(0xFFF1F5F9)
-    val textPrimary = Color(0xFF0F172A)
-    val textSecondary = Color(0xFF475569)
-    val softCardBg = Color(0xFFFFFFFF)
+    val warmBackground = look.page
+    val textPrimary = look.ink
+    val textSecondary = look.soft
+    val softCardBg = look.card
     val listeningColor = Color(0xFF0D9488)
-    val accentNavy = Color(0xFF1E293B)
+    val accentNavy = look.accent
 
     if (showAddDialog) {
         AlertDialog(
@@ -547,10 +670,10 @@ fun InputScreen(
                     letterSpacing = 1.5.sp,
                     color = Color(0xFF64748B)
                 )
-                IconButton(onClick = onOpenSettings) {
+                IconButton(onClick = onOpenLook) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = "Contact Configuration",
+                        contentDescription = "Calm look",
                         tint = textSecondary
                     )
                 }
@@ -774,79 +897,45 @@ fun AlertScreen(
                         Text(
                             text = "CRITICAL ALERT",
                             color = Color.White,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
+                            letterSpacing = 1.sp
                         )
                     }
                 }
-
                 TextButton(onClick = onBackToEdit) {
-                    Text("Change my words", color = Color(0xFFFEE2E2), fontWeight = FontWeight.Bold)
+                    Text("Change my words", color = Color(0xFFFECACA), fontWeight = FontWeight.Bold)
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             Text(
-                text = "URGENT:\nHelp me Please",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Black,
+                text = "URGENT: Help me Please",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.ExtraBold,
                 color = Color.White,
-                lineHeight = 36.sp
+                lineHeight = 34.sp
+            )
+            Text(
+                text = if (patientMessage.isBlank()) "No extra words yet." else patientMessage,
+                fontSize = 16.sp,
+                color = Color(0xFFFEE2E2),
+                modifier = Modifier.padding(top = 8.dp, bottom = 18.dp)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF991B1B)
-            ) {
-                Text(
-                    text = if (patientMessage.isNotBlank()) patientMessage else "I am feeling in crisis and need urgent support right now.",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = Color.White
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "RECENT EVENTS",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF94A3B8)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    timeline.forEach { item ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = item.time,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF64748B),
-                                modifier = Modifier.width(72.dp)
-                            )
-                            Text(
-                                text = item.description,
-                                fontSize = 14.sp,
-                                color = Color(0xFF1E293B)
-                            )
-                        }
-                    }
+            Text(
+                text = "RECENT EVENTS",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFFECACA),
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            timeline.forEach { item ->
+                Row(modifier = Modifier.padding(vertical = 4.dp)) {
+                    Text(item.time, color = Color(0xFFFECACA), fontSize = 13.sp, modifier = Modifier.width(84.dp))
+                    Text(item.description, color = Color.White, fontSize = 13.sp)
                 }
             }
         }
@@ -856,47 +945,29 @@ fun AlertScreen(
                 onClick = onSoundAlarm,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White)
             ) {
-                Text(
-                    text = "Read my words aloud",
-                    color = Color(0xFF0F172A),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("Read my words aloud", color = Color(0xFF7F1D1D), fontWeight = FontWeight.Bold)
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            OutlinedButton(
+            Spacer(modifier = Modifier.height(10.dp))
+            Button(
                 onClick = onDispatch,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7F1D1D))
             ) {
-                Text(
-                    text = "Reach out to my person",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text("Reach out to my person", color = Color.White, fontWeight = FontWeight.Bold)
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
+            Spacer(modifier = Modifier.height(10.dp))
             TextButton(
                 onClick = onDismissAlert,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = "I'm feeling steadier now",
-                    color = Color(0xFFFCA5A5),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text("I'm feeling steadier now", color = Color(0xFFFECACA), fontWeight = FontWeight.Bold)
             }
         }
     }
