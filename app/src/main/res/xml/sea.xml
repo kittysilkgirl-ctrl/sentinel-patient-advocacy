@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<look name="sea" label="Ocean">
+    <page>#E7F4F8</page>
+    <card>#FFFFFF</card>
+    <ink>#1C3A4A</ink>
+    <soft>#7BA7B8</soft>
+    <accent>#2F7D96</accent>
+</look>
