@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<look name="bolt" label="Thunderbolt">
+    <page>#1B2430</page>
+    <card>#273244</card>
+    <ink>#F4F1EA</ink>
+    <soft>#9AA4B5</soft>
+    <accent>#E2B657</accent>
+</look>
