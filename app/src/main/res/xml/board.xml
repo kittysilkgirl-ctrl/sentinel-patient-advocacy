@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<look name="board" label="Whiteboard">
+    <page>#F7F6F3</page>
+    <card>#FFFFFF</card>
+    <ink>#1E2430</ink>
+    <soft>#8A908C</soft>
+    <accent>#3D5A80</accent>
+</look>
