@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <look name="bunny" label="Fluffy bunnies">
-    <page>#F8F1F4</page>
-    <card>#FFFCFD</card>
-    <ink>#6B4E5C</ink>
-    <soft>#B992A4</soft>
-    <accent>#C9899E</accent>
-    <font>cursive</font>
+    <page>#F8E6EC</page>
+    <card>#FFF9FB</card>
+    <ink>#5C2A48</ink>
+    <soft>#C4899A</soft>
+    <accent>#C45B7C</accent>
 </look>
