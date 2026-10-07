@@ -37,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -140,7 +142,8 @@ data class CalmLook(
     val card: Color,
     val ink: Color,
     val soft: Color,
-    val accent: Color
+    val accent: Color,
+    val font: String = ""
 )
 
 private val lookChoices = listOf(
@@ -179,6 +182,7 @@ fun loadCalmLook(context: Context, name: String): CalmLook {
         var ink = fallback.ink
         var soft = fallback.soft
         var accent = fallback.accent
+        var font = ""
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
             if (event == XmlPullParser.START_TAG) {
@@ -189,14 +193,52 @@ fun loadCalmLook(context: Context, name: String): CalmLook {
                     "ink" -> ink = colorOr(parser.nextText(), ink)
                     "soft" -> soft = colorOr(parser.nextText(), soft)
                     "accent" -> accent = colorOr(parser.nextText(), accent)
+                    "font" -> font = parser.nextText().trim()
                 }
             }
             event = parser.next()
         }
         parser.close()
-        CalmLook(safeName, label, page, card, ink, soft, accent)
+        CalmLook(safeName, label, page, card, ink, soft, accent, font)
     } catch (e: Exception) {
         fallback.copy(name = safeName, label = lookChoices.first { it.first == safeName }.second)
+    }
+}
+
+
+private fun Typography.cursive(): Typography {
+    val cursive = FontFamily.Cursive
+    return copy(
+        displayLarge = displayLarge.copy(fontFamily = cursive),
+        displayMedium = displayMedium.copy(fontFamily = cursive),
+        displaySmall = displaySmall.copy(fontFamily = cursive),
+        headlineLarge = headlineLarge.copy(fontFamily = cursive),
+        headlineMedium = headlineMedium.copy(fontFamily = cursive),
+        headlineSmall = headlineSmall.copy(fontFamily = cursive),
+        titleLarge = titleLarge.copy(fontFamily = cursive),
+        titleMedium = titleMedium.copy(fontFamily = cursive),
+        titleSmall = titleSmall.copy(fontFamily = cursive),
+        bodyLarge = bodyLarge.copy(fontFamily = cursive),
+        bodyMedium = bodyMedium.copy(fontFamily = cursive),
+        bodySmall = bodySmall.copy(fontFamily = cursive),
+        labelLarge = labelLarge.copy(fontFamily = cursive),
+        labelMedium = labelMedium.copy(fontFamily = cursive),
+        labelSmall = labelSmall.copy(fontFamily = cursive)
+    )
+}
+
+@Composable
+private fun CalmFont(look: CalmLook, content: @Composable () -> Unit) {
+    if (look.font == "cursive") {
+        MaterialTheme(typography = MaterialTheme.typography.cursive()) {
+            CompositionLocalProvider(
+                LocalTextStyle provides TextStyle(fontFamily = FontFamily.Cursive)
+            ) {
+                content()
+            }
+        }
+    } else {
+        content()
     }
 }
 
@@ -379,6 +421,7 @@ fun SentinelApp(
     )
 
     if (showLookDialog) {
+        CalmFont(look) {
         AlertDialog(
             onDismissRequest = { showLookDialog = false },
             title = { Text("Calm look", fontWeight = FontWeight.Bold, color = look.ink) },
@@ -419,6 +462,7 @@ fun SentinelApp(
                 }
             }
         )
+        }
     }
 
     Surface(
@@ -426,7 +470,7 @@ fun SentinelApp(
         color = if (currentScreen == ScreenState.ALERT) Color(0xFFB91C1C) else look.page
     ) {
         when (currentScreen) {
-            ScreenState.INPUT -> InputScreen(
+            ScreenState.INPUT -> CalmFont(look) { InputScreen(
                 look = look,
                 userInput = userInput,
                 onUserInputChange = { userInput = it },
@@ -450,7 +494,7 @@ fun SentinelApp(
                     }
                     currentScreen = ScreenState.ALERT
                 }
-            )
+            ) }
 
             ScreenState.ALERT -> AlertScreen(
                 patientMessage = userInput,
@@ -464,7 +508,7 @@ fun SentinelApp(
                 onDispatch = { dispatchEmergencyAlert() }
             )
 
-            ScreenState.REGISTER_CONTACT -> ContactRegistrationScreen(
+            ScreenState.REGISTER_CONTACT -> CalmFont(look) { ContactRegistrationScreen(
                 look = look,
                 initialName = payload.contactName,
                 initialPhone = payload.contactPhone,
@@ -480,7 +524,7 @@ fun SentinelApp(
                     currentScreen = ScreenState.INPUT
                 },
                 onCancel = { currentScreen = ScreenState.INPUT }
-            )
+            ) }
         }
     }
 }
