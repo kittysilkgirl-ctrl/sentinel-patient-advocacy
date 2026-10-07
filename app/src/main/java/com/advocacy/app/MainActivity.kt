@@ -1,11 +1,13 @@
 package com.advocacy.app
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.ContactsContract
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -20,12 +22,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Settings
@@ -530,6 +535,26 @@ fun SentinelApp(
 }
 
 @Composable
+private fun readPickedPerson(context: Context, uri: Uri): Pair<String, String> {
+    return try {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) return "" to ""
+            val nameIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+            val numberIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            val pickedName = if (nameIdx >= 0) cursor.getString(nameIdx).orEmpty() else ""
+            val pickedNumber = if (numberIdx >= 0) cursor.getString(numberIdx).orEmpty() else ""
+            if (pickedName.isNotBlank() || pickedNumber.isNotBlank()) {
+                return pickedName to pickedNumber
+            }
+            val contactNameIdx = cursor.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME)
+            val contactName = if (contactNameIdx >= 0) cursor.getString(contactNameIdx).orEmpty() else ""
+            contactName to ""
+        } ?: ("" to "")
+    } catch (e: Exception) {
+        "" to ""
+    }
+}
+
 fun ContactRegistrationScreen(
     look: CalmLook,
     initialName: String,
@@ -539,6 +564,40 @@ fun ContactRegistrationScreen(
 ) {
     var name by remember { mutableStateOf(initialName) }
     var phone by remember { mutableStateOf(initialPhone) }
+    val context = LocalContext.current
+
+    val pickLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data
+        if (result.resultCode != Activity.RESULT_OK || uri == null) return@rememberLauncherForActivityResult
+        val picked = readPickedPerson(context, uri)
+        if (picked.first.isNotBlank()) name = picked.first
+        if (picked.second.isNotBlank()) {
+            phone = picked.second
+        } else {
+            Toast.makeText(context, "No number on that person. You can type one below.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun openPhonePeople() {
+        try {
+            val intent = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+            pickLauncher.launch(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not open your contacts. You can type the name and number below.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val askContacts = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            openPhonePeople()
+        } else {
+            Toast.makeText(context, "That is ok. You can type their name and number below.", Toast.LENGTH_LONG).show()
+        }
+    }
 
     val warmBackground = look.page
     val textPrimary = look.ink
@@ -550,10 +609,14 @@ fun ContactRegistrationScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(warmBackground)
-            .padding(24.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+            .padding(24.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.clickable { onCancel() }
@@ -576,7 +639,34 @@ fun ContactRegistrationScreen(
                 fontSize = 14.sp,
                 color = textSecondary,
                 lineHeight = 20.sp,
-                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
+                modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)
+            )
+
+            OutlinedButton(
+                onClick = {
+                    val allowed = ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.READ_CONTACTS
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (allowed) openPhonePeople() else askContacts.launch(Manifest.permission.READ_CONTACTS)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, accentNavy),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = accentNavy)
+            ) {
+                Icon(imageVector = Icons.Default.Person, contentDescription = null, tint = accentNavy)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Choose someone from my phone", fontWeight = FontWeight.Bold)
+            }
+            Text(
+                text = "Or type their name and number below. Either way is fine.",
+                fontSize = 14.sp,
+                color = textSecondary,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(top = 8.dp, bottom = 20.dp)
             )
 
             Text(
@@ -624,6 +714,7 @@ fun ContactRegistrationScreen(
             )
         }
 
+        Spacer(modifier = Modifier.height(12.dp))
         Button(
             onClick = { onSave(name, phone) },
             modifier = Modifier
