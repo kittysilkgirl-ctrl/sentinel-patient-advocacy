@@ -534,7 +534,6 @@ fun SentinelApp(
     }
 }
 
-@Composable
 private fun readPickedPerson(context: Context, uri: Uri): Pair<String, String> {
     return try {
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -555,6 +554,7 @@ private fun readPickedPerson(context: Context, uri: Uri): Pair<String, String> {
     }
 }
 
+@Composable
 fun ContactRegistrationScreen(
     look: CalmLook,
     initialName: String,
