@@ -1,3 +1,4 @@
+// app/src/main/java/com/advocacy/app/MainActivity.kt
 package com.advocacy.app
 
 import android.Manifest
@@ -429,6 +430,9 @@ fun SentinelApp(
         CalmFont(look) {
         AlertDialog(
             onDismissRequest = { showLookDialog = false },
+            containerColor = look.card,
+            titleContentColor = look.ink,
+            textContentColor = look.ink,
             title = { Text("Calm look", fontWeight = FontWeight.Bold, color = look.ink) },
             text = {
                 Column {
