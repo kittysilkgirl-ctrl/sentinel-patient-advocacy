@@ -14,6 +14,10 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.widget.Toast
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
+import android.content.ContentValues
+
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -117,26 +121,104 @@ data class SentinelSyncPayload(
     }
 }
 
+// Local JSON for now. Concept: later sync notes and events to a MySQL database for the care team.
+// SQLite for local storage. Concept: later a secure server can sync to MySQL for the team.
+class SentinelDbHelper(context: Context) : SQLiteOpenHelper(context, "sentinel.db", null, 1) {
+    override fun onCreate(db: SQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        db.execSQL("""
+            CREATE TABLE notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT,
+                title TEXT,
+                body TEXT,
+                created INTEGER
+            )
+        """)
+    }
+
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // Phase 1: simple. Drop and recreate if needed later.
+    }
+}
+
 class SentinelStorageManager(private val context: Context) {
-    private val fileName = "sentinel_backup.json"
+    private val dbHelper = SentinelDbHelper(context)
 
     fun savePayload(payload: SentinelSyncPayload) {
+        val db = dbHelper.writableDatabase
+        db.beginTransaction()
         try {
-            context.openFileOutput(fileName, Context.MODE_PRIVATE).use { output ->
-                output.write(payload.toJson().toByteArray())
+            fun put(key: String, value: String) {
+                val cv = ContentValues().apply {
+                    put("key", key)
+                    put("value", value)
+                }
+                db.insertWithOnConflict("settings", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+            put("contactName", payload.contactName)
+            put("contactPhone", payload.contactPhone)
+            put("lookName", payload.lookName)
+            put("quickAnchors", payload.quickAnchors.joinToString("||"))
+            put("lastModified", payload.lastModified.toString())
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+            db.close()
         }
     }
 
     fun readPayload(): SentinelSyncPayload {
-        return try {
-            val content = context.openFileInput(fileName).bufferedReader().use { it.readText() }
-            SentinelSyncPayload.fromJson(content)
-        } catch (e: Exception) {
-            SentinelSyncPayload()
+        val db = dbHelper.readableDatabase
+        val map = mutableMapOf<String, String>()
+        db.rawQuery("SELECT key, value FROM settings", null).use { cursor ->
+            while (cursor.moveToNext()) {
+                map[cursor.getString(0)] = cursor.getString(1)
+            }
         }
+        db.close()
+        val anchors = map["quickAnchors"]?.split("||")?.filter { it.isNotBlank() } ?: listOf(
+            "I need someone to sit with me",
+            "I feel overwhelmed",
+            "I am in severe pain",
+            "I cannot speak right now"
+        )
+        return SentinelSyncPayload(
+            contactName = map["contactName"] ?: "",
+            contactPhone = map["contactPhone"] ?: "",
+            lookName = map["lookName"] ?: "board",
+            quickAnchors = anchors,
+            lastModified = map["lastModified"]?.toLongOrNull() ?: System.currentTimeMillis()
+        )
+    }
+
+    fun addNote(type: String, title: String, body: String) {
+        val db = dbHelper.writableDatabase
+        val cv = ContentValues().apply {
+            put("type", type)
+            put("title", title)
+            put("body", body)
+            put("created", System.currentTimeMillis())
+        }
+        db.insert("notes", null, cv)
+        db.close()
+    }
+
+    fun getNotes(): List<Triple<String, String, String>> {
+        val db = dbHelper.readableDatabase
+        val list = mutableListOf<Triple<String, String, String>>()
+        db.rawQuery("SELECT type, title, body FROM notes ORDER BY created DESC LIMIT 10", null).use { cursor ->
+            while (cursor.moveToNext()) {
+                list.add(Triple(cursor.getString(0), cursor.getString(1), cursor.getString(2)))
+            }
+        }
+        db.close()
+        return list
     }
 }
 
@@ -299,7 +381,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 }
 
 enum class ScreenState {
-    INPUT, ALERT, REGISTER_CONTACT
+    INPUT, ALERT, REGISTER_CONTACT, JOURNEY
 }
 
 data class TimelineItem(val time: String, val description: String)
@@ -463,6 +545,14 @@ fun SentinelApp(
                     ) {
                         Text("Support contact", color = look.soft)
                     }
+                    TextButton(
+                        onClick = {
+                            showLookDialog = false
+                            currentScreen = ScreenState.JOURNEY
+                        }
+                    ) {
+                        Text("Daily Journey", color = look.soft)
+                    }
                 }
             },
             confirmButton = {
@@ -503,6 +593,13 @@ fun SentinelApp(
                     }
                     currentScreen = ScreenState.ALERT
                 }
+            ) }
+
+            ScreenState.JOURNEY -> CalmFont(look) { JourneyScreen(
+                look = look,
+                onOpenLook = { showLookDialog = true },
+                onUrgent = { currentScreen = ScreenState.INPUT },
+                onBack = { currentScreen = ScreenState.INPUT }
             ) }
 
             ScreenState.ALERT -> AlertScreen(
@@ -1108,6 +1205,113 @@ fun AlertScreen(
             ) {
                 Text("I'm feeling steadier now", color = Color(0xFFFECACA), fontWeight = FontWeight.Bold)
             }
+        }
+    }
+}
+
+
+
+@Composable
+// Notes are stored in the local SQLite notes table. Placeholders show until real notes are saved.
+fun JourneyScreen(
+    look: CalmLook,
+    onOpenLook: () -> Unit,
+    onUrgent: () -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Daily Journey",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = look.ink
+            )
+            IconButton(onClick = onOpenLook) {
+                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = look.ink)
+            }
+        }
+        Text(
+            text = "A supportive space for your thoughts, one day at a time.",
+            color = look.soft,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        // Morning note placeholder
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            colors = CardDefaults.cardColors(containerColor = look.card),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("AUDIO MEMO", color = look.accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("Morning note", color = look.ink, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 4.dp))
+                Text("A quiet moment to check in.", color = look.soft, modifier = Modifier.padding(top = 4.dp))
+                Text("Today", color = look.soft, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                Text("Saved", color = look.accent, fontSize = 12.sp)
+            }
+        }
+
+        // What helped today placeholder
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            colors = CardDefaults.cardColors(containerColor = look.card),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("TEXT REFLECTION", color = look.accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("What helped today", color = look.ink, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 4.dp))
+                Text("Small things that made a difference.", color = look.soft, modifier = Modifier.padding(top = 4.dp))
+                Text("Today", color = look.soft, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                Text("Saved", color = look.accent, fontSize = 12.sp)
+            }
+        }
+
+        // Photo note placeholder
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            colors = CardDefaults.cardColors(containerColor = look.card),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("PHOTO NOTE", color = look.accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("A small photo", color = look.ink, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 4.dp))
+                Text("Captured a little moment of calm.", color = look.soft, modifier = Modifier.padding(top = 4.dp))
+                Text("Today", color = look.soft, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                Text("Saved", color = look.accent, fontSize = 12.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = onUrgent,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C))
+        ) {
+            Text("Urgent Help", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+
+        TextButton(
+            onClick = onBack,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Back to speak", color = look.soft)
         }
     }
 }
