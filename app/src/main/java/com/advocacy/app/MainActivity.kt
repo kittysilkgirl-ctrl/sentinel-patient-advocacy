@@ -65,7 +65,6 @@ data class SentinelSyncPayload(
     val lastModified: Long = System.currentTimeMillis(),
     val contactName: String = "",
     val contactPhone: String = "",
-    val lookName: String = "board",
     val quickAnchors: List<String> = listOf(
         "I need someone to sit with me",
         "I feel overwhelmed",
@@ -82,14 +81,12 @@ data class SentinelSyncPayload(
             postfix = "]"
         ) { "\"${it.replace("\"", "\\\"")}\"" }
 
-        val escapedLook = lookName.replace("\"", "\\\"")
         return """
         {
           "version": $version,
           "lastModified": $lastModified,
           "contactName": "$escapedName",
           "contactPhone": "$escapedPhone",
-          "lookName": "$escapedLook",
           "quickAnchors": $anchorsJson
         }
         """.trimIndent()
@@ -99,7 +96,6 @@ data class SentinelSyncPayload(
         fun fromJson(json: String): SentinelSyncPayload {
             val name = Regex("\"contactName\":\\s*\"(.*?)\"").find(json)?.groupValues?.get(1) ?: ""
             val phone = Regex("\"contactPhone\":\\s*\"(.*?)\"").find(json)?.groupValues?.get(1) ?: ""
-            val look = Regex("\"lookName\":\\s*\"(.*?)\"").find(json)?.groupValues?.get(1) ?: "board"
             val anchorsBlock = Regex("\"quickAnchors\":\\s*\\[(.*?)\\]").find(json)?.groupValues?.get(1)
             val anchors = if (!anchorsBlock.isNullOrBlank()) {
                 Regex("\"(.*?)\"").findAll(anchorsBlock).map { it.groupValues[1] }.toList()
@@ -114,7 +110,6 @@ data class SentinelSyncPayload(
             return SentinelSyncPayload(
                 contactName = name,
                 contactPhone = phone,
-                lookName = look,
                 quickAnchors = anchors
             )
         }
@@ -162,9 +157,7 @@ class SentinelStorageManager(private val context: Context) {
                 db.insertWithOnConflict("settings", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
             }
             put("contactName", payload.contactName)
-            put("contactPhone", payload.contactPhone)
-            put("lookName", payload.lookName)
-            put("quickAnchors", payload.quickAnchors.joinToString("||"))
+            put("contactPhone", payload.contactPhone)            put("quickAnchors", payload.quickAnchors.joinToString("||"))
             put("lastModified", payload.lastModified.toString())
             db.setTransactionSuccessful()
         } finally {
@@ -191,7 +184,6 @@ class SentinelStorageManager(private val context: Context) {
         return SentinelSyncPayload(
             contactName = map["contactName"] ?: "",
             contactPhone = map["contactPhone"] ?: "",
-            lookName = map["lookName"] ?: "board",
             quickAnchors = anchors,
             lastModified = map["lastModified"]?.toLongOrNull() ?: System.currentTimeMillis()
         )
@@ -223,112 +215,17 @@ class SentinelStorageManager(private val context: Context) {
 }
 
 
-data class CalmLook(
-    val name: String,
-    val label: String,
-    val page: Color,
-    val card: Color,
-    val ink: Color,
-    val soft: Color,
-    val accent: Color,
-    val font: String = ""
+// Fluffy Bunny Scheme - single fixed look for Maya
+data class BunnyLook(
+    val page: Color = Color(0xFF12131C),      // Midnight Velvet
+    val card: Color = Color(0xFF1A1C28),
+    val ink: Color = Color(0xFFF5E6EF),
+    val soft: Color = Color(0xFF70E3FF),      // Sky Cyan
+    val accent: Color = Color(0xFFFF7EB3),    // Pastel Magenta
+    val peach: Color = Color(0xFFFFB399)      // Gentle Peach
 )
 
-private val lookChoices = listOf(
-    "bolt" to "Thunderbolt",
-    "sea" to "Ocean",
-    "board" to "Whiteboard",
-    "bunny" to "Fluffy bunnies"
-)
-
-private fun colorOr(raw: String, fallback: Color): Color {
-    return try {
-        Color(android.graphics.Color.parseColor(raw.trim()))
-    } catch (e: Exception) {
-        fallback
-    }
-}
-
-fun loadCalmLook(context: Context, name: String): CalmLook {
-    val fallback = CalmLook(
-        name = "board",
-        label = "Whiteboard",
-        page = Color(0xFFF7F6F3),
-        card = Color(0xFFFFFFFF),
-        ink = Color(0xFF1E2430),
-        soft = Color(0xFF8A908C),
-        accent = Color(0xFF3D5A80)
-    )
-    val safeName = if (lookChoices.any { it.first == name }) name else "board"
-    val id = context.resources.getIdentifier(safeName, "xml", context.packageName)
-    if (id == 0) return fallback.copy(name = safeName)
-    return try {
-        val parser = context.resources.getXml(id)
-        var label = lookChoices.first { it.first == safeName }.second
-        var page = fallback.page
-        var card = fallback.card
-        var ink = fallback.ink
-        var soft = fallback.soft
-        var accent = fallback.accent
-        var font = ""
-        var event = parser.eventType
-        while (event != XmlPullParser.END_DOCUMENT) {
-            if (event == XmlPullParser.START_TAG) {
-                when (parser.name) {
-                    "look" -> label = parser.getAttributeValue(null, "label") ?: label
-                    "page" -> page = colorOr(parser.nextText(), page)
-                    "card" -> card = colorOr(parser.nextText(), card)
-                    "ink" -> ink = colorOr(parser.nextText(), ink)
-                    "soft" -> soft = colorOr(parser.nextText(), soft)
-                    "accent" -> accent = colorOr(parser.nextText(), accent)
-                    "font" -> font = parser.nextText().trim()
-                }
-            }
-            event = parser.next()
-        }
-        parser.close()
-        CalmLook(safeName, label, page, card, ink, soft, accent, font)
-    } catch (e: Exception) {
-        fallback.copy(name = safeName, label = lookChoices.first { it.first == safeName }.second)
-    }
-}
-
-
-private fun Typography.cursive(): Typography {
-    val cursive = FontFamily.Cursive
-    return copy(
-        displayLarge = displayLarge.copy(fontFamily = cursive),
-        displayMedium = displayMedium.copy(fontFamily = cursive),
-        displaySmall = displaySmall.copy(fontFamily = cursive),
-        headlineLarge = headlineLarge.copy(fontFamily = cursive),
-        headlineMedium = headlineMedium.copy(fontFamily = cursive),
-        headlineSmall = headlineSmall.copy(fontFamily = cursive),
-        titleLarge = titleLarge.copy(fontFamily = cursive),
-        titleMedium = titleMedium.copy(fontFamily = cursive),
-        titleSmall = titleSmall.copy(fontFamily = cursive),
-        bodyLarge = bodyLarge.copy(fontFamily = cursive),
-        bodyMedium = bodyMedium.copy(fontFamily = cursive),
-        bodySmall = bodySmall.copy(fontFamily = cursive),
-        labelLarge = labelLarge.copy(fontFamily = cursive),
-        labelMedium = labelMedium.copy(fontFamily = cursive),
-        labelSmall = labelSmall.copy(fontFamily = cursive)
-    )
-}
-
-@Composable
-private fun CalmFont(look: CalmLook, content: @Composable () -> Unit) {
-    if (look.font == "cursive") {
-        MaterialTheme(typography = MaterialTheme.typography.cursive()) {
-            CompositionLocalProvider(
-                LocalTextStyle provides TextStyle(fontFamily = FontFamily.Cursive)
-            ) {
-                content()
-            }
-        }
-    } else {
-        content()
-    }
-}
+private val bunnyLook = BunnyLook()
 
 // ==========================================
 // MAIN ACTIVITY
@@ -399,8 +296,7 @@ fun SentinelApp(
     var userInput by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
     var payload by remember { mutableStateOf(storageManager.readPayload()) }
-    var showLookDialog by remember { mutableStateOf(false) }
-    val look = remember(payload.lookName) { loadCalmLook(context, payload.lookName) }
+    var showSettings by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -508,69 +404,44 @@ fun SentinelApp(
         TimelineItem("09:32 AM", "Felt homesick")
     )
 
-    if (showLookDialog) {
-        CalmFont(look) {
+    if (showSettings) {
         AlertDialog(
-            onDismissRequest = { showLookDialog = false },
-            containerColor = look.card,
-            titleContentColor = look.ink,
-            textContentColor = look.ink,
-            title = { Text("Calm look", fontWeight = FontWeight.Bold, color = look.ink) },
+            onDismissRequest = { showSettings = false },
+            containerColor = bunnyLook.card,
+            titleContentColor = bunnyLook.ink,
+            textContentColor = bunnyLook.ink,
+            title = { Text("Settings", fontWeight = FontWeight.Bold, color = bunnyLook.ink) },
             text = {
                 Column {
-                    lookChoices.forEach { (name, label) ->
-                        TextButton(
-                            onClick = {
-                                val updated = payload.copy(
-                                    lookName = name,
-                                    lastModified = System.currentTimeMillis()
-                                )
-                                storageManager.savePayload(updated)
-                                payload = updated
-                                showLookDialog = false
-                            }
-                        ) {
-                            Text(
-                                text = if (payload.lookName == name) "$label  (this one)" else label,
-                                color = look.ink,
-                                fontWeight = if (payload.lookName == name) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
+                    TextButton(onClick = {
+                        showSettings = false
+                        currentScreen = ScreenState.REGISTER_CONTACT
+                    }) {
+                        Text("Support contact", color = bunnyLook.soft)
                     }
-                    TextButton(
-                        onClick = {
-                            showLookDialog = false
-                            currentScreen = ScreenState.REGISTER_CONTACT
-                        }
-                    ) {
-                        Text("Support contact", color = look.soft)
-                    }
-                    TextButton(
-                        onClick = {
-                            showLookDialog = false
-                            currentScreen = ScreenState.JOURNEY
-                        }
-                    ) {
-                        Text("Daily Journey", color = look.soft)
+                    TextButton(onClick = {
+                        showSettings = false
+                        currentScreen = ScreenState.JOURNEY
+                    }) {
+                        Text("Daily Journey", color = bunnyLook.soft)
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showLookDialog = false }) {
-                    Text("Leave it for now", color = look.soft)
+                TextButton(onClick = { showSettings = false }) {
+                    Text("Close", color = bunnyLook.soft)
                 }
             }
         )
-        }
     }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = if (currentScreen == ScreenState.ALERT) Color(0xFFB91C1C) else look.page
+        color = if (currentScreen == ScreenState.ALERT) Color(0xFFB91C1C) else bunnyLook.page
     ) {
         when (currentScreen) {
-            ScreenState.INPUT -> CalmFont(look) { InputScreen(
-                look = look,
+            ScreenState.INPUT -> InputScreen(
+                look = bunnyLook,
                 userInput = userInput,
                 onUserInputChange = { userInput = it },
                 quickAnchors = payload.quickAnchors,
@@ -585,7 +456,7 @@ fun SentinelApp(
                 },
                 isListening = isListening,
                 onMicClick = { toggleListening() },
-                onOpenLook = { showLookDialog = true },
+                onOpenLook = { showSettings = true },
                 onContinue = {
                     if (isListening) {
                         speechRecognizer.stopListening()
@@ -595,9 +466,9 @@ fun SentinelApp(
                 }
             ) }
 
-            ScreenState.JOURNEY -> CalmFont(look) { JourneyScreen(
-                look = look,
-                onOpenLook = { showLookDialog = true },
+            ScreenState.JOURNEY -> JourneyScreen(
+                look = bunnyLook,
+                onOpenLook = { showSettings = true },
                 onUrgent = { currentScreen = ScreenState.INPUT },
                 onBack = { currentScreen = ScreenState.INPUT }
             ) }
@@ -614,8 +485,8 @@ fun SentinelApp(
                 onDispatch = { dispatchEmergencyAlert() }
             )
 
-            ScreenState.REGISTER_CONTACT -> CalmFont(look) { ContactRegistrationScreen(
-                look = look,
+            ScreenState.REGISTER_CONTACT -> ContactRegistrationScreen(
+                look = bunnyLook,
                 initialName = payload.contactName,
                 initialPhone = payload.contactPhone,
                 onSave = { name, phone ->
@@ -657,7 +528,7 @@ private fun readPickedPerson(context: Context, uri: Uri): Pair<String, String> {
 
 @Composable
 fun ContactRegistrationScreen(
-    look: CalmLook,
+    look: BunnyLook,
     initialName: String,
     initialPhone: String,
     onSave: (String, String) -> Unit,
@@ -754,7 +625,7 @@ fun ContactRegistrationScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(28.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, accentNavy),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = accentNavy)
             ) {
@@ -782,7 +653,7 @@ fun ContactRegistrationScreen(
                 onValueChange = { name = it },
                 placeholder = { Text("e.g. Sarah, Advocate, Sister", color = Color(0xFF94A3B8)) },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = softCardBg,
                     unfocusedContainerColor = softCardBg,
@@ -805,7 +676,7 @@ fun ContactRegistrationScreen(
                 onValueChange = { phone = it },
                 placeholder = { Text("e.g. +447123456789", color = Color(0xFF94A3B8)) },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = softCardBg,
                     unfocusedContainerColor = softCardBg,
@@ -821,7 +692,7 @@ fun ContactRegistrationScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(28.dp),
             colors = ButtonDefaults.buttonColors(containerColor = accentNavy)
         ) {
             Text("Keep this person", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -831,7 +702,7 @@ fun ContactRegistrationScreen(
 
 @Composable
 fun InputScreen(
-    look: CalmLook,
+    look: BunnyLook,
     userInput: String,
     onUserInputChange: (String) -> Unit,
     quickAnchors: List<String>,
@@ -861,7 +732,7 @@ fun InputScreen(
                     onValueChange = { newAnchorText = it },
                     placeholder = { Text("e.g. Please bring water") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(24.dp)
                 )
             },
             confirmButton = {
@@ -900,7 +771,7 @@ fun InputScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "SENTINEL ADVOCACY",
+                    text = "MAYA",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.5.sp,
@@ -1069,7 +940,7 @@ fun InputScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(28.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = accentNavy)
             ) {
                 Row(
@@ -1214,7 +1085,7 @@ fun AlertScreen(
 @Composable
 // Notes are stored in the local SQLite notes table. Placeholders show until real notes are saved.
 fun JourneyScreen(
-    look: CalmLook,
+    look: BunnyLook,
     onOpenLook: () -> Unit,
     onUrgent: () -> Unit,
     onBack: () -> Unit
@@ -1252,7 +1123,7 @@ fun JourneyScreen(
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
             colors = CardDefaults.cardColors(containerColor = look.card),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(28.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("AUDIO MEMO", color = look.accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -1269,7 +1140,7 @@ fun JourneyScreen(
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
             colors = CardDefaults.cardColors(containerColor = look.card),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(28.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("TEXT REFLECTION", color = look.accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -1286,7 +1157,7 @@ fun JourneyScreen(
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
             colors = CardDefaults.cardColors(containerColor = look.card),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(28.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("PHOTO NOTE", color = look.accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -1315,3 +1186,4 @@ fun JourneyScreen(
         }
     }
 }
+
