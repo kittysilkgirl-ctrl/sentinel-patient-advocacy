@@ -3,9 +3,12 @@ package com.advocacy.app
 
 import android.Manifest
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
@@ -14,30 +17,26 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.widget.Toast
-import android.database.sqlite.SQLiteDatabase
-import android.database.sqlite.SQLiteOpenHelper
-import android.content.ContentValues
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -47,13 +46,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import org.xmlpull.v1.XmlPullParser
 import java.util.Locale
 
 // ==========================================
@@ -717,7 +713,6 @@ fun InputScreen(
     val textPrimary = look.ink
     val textSecondary = look.soft
     val softCardBg = look.card
-    val listeningColor = Color(0xFF0D9488)
     val accentNavy = look.accent
 
     if (showAddDialog) {
@@ -747,3 +742,270 @@ fun InputScreen(
                 }
             },
             dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) {
+                    Text("Cancel", color = textSecondary)
+                }
+            }
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(warmBackground)
+            .padding(24.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Sentinel",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = textPrimary
+            )
+            IconButton(onClick = onOpenLook) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Settings",
+                    tint = textSecondary
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = userInput,
+            onValueChange = onUserInputChange,
+            placeholder = { Text("Tap microphone to speak or type here...", color = textSecondary) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            shape = RoundedCornerShape(20.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = softCardBg,
+                unfocusedContainerColor = softCardBg,
+                focusedBorderColor = accentNavy,
+                unfocusedBorderColor = textSecondary
+            )
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "QUICK ANCHORS",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = textSecondary
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(quickAnchors) { anchor ->
+                SuggestionChip(
+                    onClick = { onUserInputChange(anchor) },
+                    label = { Text(anchor, color = textPrimary) },
+                    colors = SuggestionChipDefaults.suggestionChipColors(containerColor = softCardBg)
+                )
+            }
+            item {
+                IconButton(
+                    onClick = { showAddDialog = true },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(softCardBg)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add Anchor",
+                        tint = textSecondary
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(
+                onClick = onMicClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isListening) Color(0xFFEF4444) else accentNavy
+                ),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.weight(1f).height(52.dp)
+            ) {
+                Text(
+                    text = if (isListening) "Listening..." else "Tap to Speak",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+
+            Button(
+                onClick = onContinue,
+                colors = ButtonDefaults.buttonColors(containerColor = look.soft),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.weight(1f).height(52.dp)
+            ) {
+                Text("Alert", fontWeight = FontWeight.Bold, color = Color.Black)
+            }
+        }
+    }
+}
+
+@Composable
+fun JourneyScreen(
+    look: BunnyLook,
+    onOpenLook: () -> Unit,
+    onUrgent: () -> Unit,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val storageManager = remember(context) { SentinelStorageManager(context) }
+    var notes by remember { mutableStateOf(storageManager.getNotes()) }
+    var newNoteTitle by remember { mutableStateOf("") }
+    var newNoteBody by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(look.page)
+            .padding(24.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onBack() }
+            ) {
+                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back", tint = look.soft)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Back", color = look.soft, fontSize = 14.sp)
+            }
+
+            IconButton(onClick = onOpenLook) {
+                Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings", tint = look.soft)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Daily Journey",
+            fontSize = 26.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = look.ink
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            OutlinedTextField(
+                value = newNoteTitle,
+                onValueChange = { newNoteTitle = it },
+                placeholder = { Text("Title or focus of the day...", color = Color(0xFF94A3B8)) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = look.card,
+                    unfocusedContainerColor = look.card,
+                    focusedBorderColor = look.accent,
+                    unfocusedBorderColor = Color(0xFFCBD5E1)
+                )
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = newNoteBody,
+                onValueChange = { newNoteBody = it },
+                placeholder = { Text("Note down how you feel, grounding steps...", color = Color(0xFF94A3B8)) },
+                modifier = Modifier.fillMaxWidth().height(120.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = look.card,
+                    unfocusedContainerColor = look.card,
+                    focusedBorderColor = look.accent,
+                    unfocusedBorderColor = Color(0xFFCBD5E1)
+                )
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = {
+                    if (newNoteTitle.isNotBlank() || newNoteBody.isNotBlank()) {
+                        storageManager.addNote("DAILY", newNoteTitle.trim(), newNoteBody.trim())
+                        notes = storageManager.getNotes()
+                        newNoteTitle = ""
+                        newNoteBody = ""
+                    }
+                },
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = look.accent),
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("Add Entry", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text("RECENT ENTRIES", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = look.soft)
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            notes.forEach { note ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = look.card)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        if (note.second.isNotBlank()) {
+                            Text(note.second, fontWeight = FontWeight.Bold, color = look.ink, fontSize = 16.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                        Text(note.third, color = look.soft, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Button(
+            onClick = onUrgent,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+        ) {
+            Text("Urgent Help Needed", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun AlertScreen(
+    patientMessage: String,
+    timeline: List<TimelineItem>,
