@@ -23,7 +23,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -35,7 +34,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -71,19 +69,19 @@ data class SentinelSyncPayload(
     fun toJson(): String {
         val escapedName = contactName.replace("\"", "\\\"")
         val escapedPhone = contactPhone.replace("\"", "\\\"")
-        val anchorsJson = quickAnchors.joinToString(
+        val anchorsList = quickAnchors.joinToString(
             separator = ",",
             prefix = "[",
             postfix = "]"
-        ) { "\"\${it.replace("\"", "\\\"")}\"" }
+        ) { "\"${it.replace("\"", "\\\"")}\"" }
 
         return """
         {
-          "version": \$version,
-          "lastModified": \$lastModified,
-          "contactName": "\$escapedName",
-          "contactPhone": "\$escapedPhone",
-          "quickAnchors": \$anchorsJson
+          "version": $version,
+          "lastModified": $lastModified,
+          "contactName": "$escapedName",
+          "contactPhone": "$escapedPhone",
+          "quickAnchors": $anchorsList
         }
         """.trimIndent()
     }
@@ -114,13 +112,16 @@ data class SentinelSyncPayload(
 
 class SentinelDbHelper(context: Context) : SQLiteOpenHelper(context, "sentinel.db", null, 1) {
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("""
+        db.execSQL(
+            """
             CREATE TABLE settings (
                 key TEXT PRIMARY KEY,
                 value TEXT
             )
-        """)
-        db.execSQL("""
+            """
+        )
+        db.execSQL(
+            """
             CREATE TABLE notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT,
@@ -128,12 +129,11 @@ class SentinelDbHelper(context: Context) : SQLiteOpenHelper(context, "sentinel.d
                 body TEXT,
                 created INTEGER
             )
-        """)
+            """
+        )
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Phase 1: simple. Drop and recreate if needed later.
-    }
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
 }
 
 class SentinelStorageManager(private val context: Context) {
@@ -211,12 +211,12 @@ class SentinelStorageManager(private val context: Context) {
 
 // Fluffy Bunny Scheme - single fixed look for Maya
 data class BunnyLook(
-    val page: Color = Color(0xFF12131C),      // Midnight Velvet
+    val page: Color = Color(0xFF12131C),
     val card: Color = Color(0xFF1A1C28),
     val ink: Color = Color(0xFFF5E6EF),
-    val soft: Color = Color(0xFF70E3FF),      // Sky Cyan
-    val accent: Color = Color(0xFFFF7EB3),    // Pastel Magenta
-    val peach: Color = Color(0xFFFFB399)      // Gentle Peach
+    val soft: Color = Color(0xFF70E3FF),
+    val accent: Color = Color(0xFFFF7EB3),
+    val peach: Color = Color(0xFFFFB399)
 )
 
 private val bunnyLook = BunnyLook()
@@ -255,7 +255,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private fun speakAlert(text: String) {
         if (isTtsInitialized) {
             val spokenMessage = if (text.isNotBlank()) {
-                "Attention required immediately. Patient states: \$text"
+                "Attention required immediately. Patient states: $text"
             } else {
                 "Attention required immediately. Patient has triggered an urgent alert."
             }
@@ -377,16 +377,16 @@ fun SentinelApp(
             Toast.makeText(context, "No emergency contact saved yet. Please add someone below.", Toast.LENGTH_LONG).show()
             currentScreen = ScreenState.REGISTER_CONTACT
         } else {
-            val alertMessage = "URGENT SENTINEL ALERT: \$userInput"
+            val alertMessage = "URGENT SENTINEL ALERT: $userInput"
             try {
                 val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
-                    data = Uri.parse("smsto:\${payload.contactPhone}")
+                    data = Uri.parse("smsto:${payload.contactPhone}")
                     putExtra("sms_body", alertMessage)
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 context.startActivity(smsIntent)
             } catch (e: Exception) {
-                Toast.makeText(context, "Could not open messaging: \${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Could not open messaging: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -1009,3 +1009,129 @@ fun JourneyScreen(
 fun AlertScreen(
     patientMessage: String,
     timeline: List<TimelineItem>,
+    onBackToEdit: () -> Unit,
+    onDismissAlert: () -> Unit,
+    onSoundAlarm: () -> Unit,
+    onDispatch: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFB91C1C))
+            .padding(24.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBackToEdit) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "Back to edit",
+                    tint = Color.White
+                )
+            }
+            TextButton(onClick = onDismissAlert) {
+                Text("Dismiss", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = Color.Yellow,
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "ACTIVE ALERT",
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF991B1B))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "PATIENT STATEMENT",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFECACA)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = if (patientMessage.isNotBlank()) patientMessage else "No statement dictated.",
+                    fontSize = 18.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "RECENT CONTEXT",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFFFECACA)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            timeline.forEach { item ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(item.description, color = Color.White, fontSize = 14.sp)
+                    Text(item.time, color = Color(0xFFFECACA), fontSize = 12.sp)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = onSoundAlarm,
+                modifier = Modifier.weight(1f).height(54.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+            ) {
+                Text("Sound Voice", color = Color(0xFFB91C1C), fontWeight = FontWeight.Bold)
+            }
+
+            Button(
+                onClick = onDispatch,
+                modifier = Modifier.weight(1f).height(54.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+            ) {
+                Text("Send SMS", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
