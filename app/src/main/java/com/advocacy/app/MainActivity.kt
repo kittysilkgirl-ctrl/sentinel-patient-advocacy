@@ -79,15 +79,15 @@ data class SentinelSyncPayload(
             separator = ",",
             prefix = "[",
             postfix = "]"
-        ) { "\"${it.replace("\"", "\\\"")}\"" }
+        ) { "\"\${it.replace("\"", "\\\"")}\"" }
 
         return """
         {
-          "version": $version,
-          "lastModified": $lastModified,
-          "contactName": "$escapedName",
-          "contactPhone": "$escapedPhone",
-          "quickAnchors": $anchorsJson
+          "version": \$version,
+          "lastModified": \$lastModified,
+          "contactName": "\$escapedName",
+          "contactPhone": "\$escapedPhone",
+          "quickAnchors": \$anchorsJson
         }
         """.trimIndent()
     }
@@ -116,8 +116,6 @@ data class SentinelSyncPayload(
     }
 }
 
-// Local JSON for now. Concept: later sync notes and events to a MySQL database for the care team.
-// SQLite for local storage. Concept: later a secure server can sync to MySQL for the team.
 class SentinelDbHelper(context: Context) : SQLiteOpenHelper(context, "sentinel.db", null, 1) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -157,7 +155,8 @@ class SentinelStorageManager(private val context: Context) {
                 db.insertWithOnConflict("settings", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
             }
             put("contactName", payload.contactName)
-            put("contactPhone", payload.contactPhone)            put("quickAnchors", payload.quickAnchors.joinToString("||"))
+            put("contactPhone", payload.contactPhone)
+            put("quickAnchors", payload.quickAnchors.joinToString("||"))
             put("lastModified", payload.lastModified.toString())
             db.setTransactionSuccessful()
         } finally {
@@ -214,7 +213,6 @@ class SentinelStorageManager(private val context: Context) {
     }
 }
 
-
 // Fluffy Bunny Scheme - single fixed look for Maya
 data class BunnyLook(
     val page: Color = Color(0xFF12131C),      // Midnight Velvet
@@ -261,7 +259,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private fun speakAlert(text: String) {
         if (isTtsInitialized) {
             val spokenMessage = if (text.isNotBlank()) {
-                "Attention required immediately. Patient states: $text"
+                "Attention required immediately. Patient states: \$text"
             } else {
                 "Attention required immediately. Patient has triggered an urgent alert."
             }
@@ -383,16 +381,16 @@ fun SentinelApp(
             Toast.makeText(context, "No emergency contact saved yet. Please add someone below.", Toast.LENGTH_LONG).show()
             currentScreen = ScreenState.REGISTER_CONTACT
         } else {
-            val alertMessage = "URGENT SENTINEL ALERT: $userInput"
+            val alertMessage = "URGENT SENTINEL ALERT: \$userInput"
             try {
                 val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
-                    data = Uri.parse("smsto:${payload.contactPhone}")
+                    data = Uri.parse("smsto:\${payload.contactPhone}")
                     putExtra("sms_body", alertMessage)
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 context.startActivity(smsIntent)
             } catch (e: Exception) {
-                Toast.makeText(context, "Could not open messaging: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Could not open messaging: \${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -464,14 +462,14 @@ fun SentinelApp(
                     }
                     currentScreen = ScreenState.ALERT
                 }
-            ) }
+            )
 
             ScreenState.JOURNEY -> JourneyScreen(
                 look = bunnyLook,
                 onOpenLook = { showSettings = true },
                 onUrgent = { currentScreen = ScreenState.INPUT },
                 onBack = { currentScreen = ScreenState.INPUT }
-            ) }
+            )
 
             ScreenState.ALERT -> AlertScreen(
                 patientMessage = userInput,
@@ -501,7 +499,7 @@ fun SentinelApp(
                     currentScreen = ScreenState.INPUT
                 },
                 onCancel = { currentScreen = ScreenState.INPUT }
-            ) }
+            )
         }
     }
 }
@@ -749,441 +747,3 @@ fun InputScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
-                    Text("Leave it for now", color = textSecondary)
-                }
-            }
-        )
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(warmBackground)
-            .padding(horizontal = 24.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "MAYA",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp,
-                    color = Color(0xFF64748B)
-                )
-                IconButton(onClick = onOpenLook) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Calm look",
-                        tint = textSecondary
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = "Take a breath.\nYou are heard here.",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = textPrimary,
-                lineHeight = 34.sp
-            )
-            Text(
-                text = "Speak or tap below. Whatever you share goes straight to the team.",
-                fontSize = 14.sp,
-                color = textSecondary,
-                lineHeight = 20.sp,
-                modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
-            )
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 12.dp)
-            ) {
-                item {
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = Color(0xFFE2E8F0),
-                        modifier = Modifier.clickable { showAddDialog = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Add custom phrase",
-                                tint = accentNavy,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Add phrase",
-                                color = accentNavy,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-                items(quickAnchors) { anchor ->
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = softCardBg,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                        modifier = Modifier.clickable { onUserInputChange(anchor) }
-                    ) {
-                        Text(
-                            text = anchor,
-                            color = accentNavy,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
-
-            OutlinedTextField(
-                value = userInput,
-                onValueChange = onUserInputChange,
-                placeholder = {
-                    Text(
-                        text = if (isListening) "Listening to you now..." else "Tap the circle below to speak, or write here...",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 15.sp
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(160.dp),
-                shape = RoundedCornerShape(18.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = softCardBg,
-                    unfocusedContainerColor = softCardBg,
-                    focusedBorderColor = Color(0xFF94A3B8),
-                    unfocusedBorderColor = Color(0xFFCBD5E1)
-                )
-            )
-
-            AnimatedVisibility(visible = isListening) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(listeningColor)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "I'm listening. Take all the time you need.",
-                        color = listeningColor,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .background(if (isListening) listeningColor.copy(alpha = 0.18f) else Color(0xFFE2E8F0))
-                    .clickable { onMicClick() }
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(if (isListening) listeningColor else accentNavy)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp, 28.dp)
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(Color.White)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = if (isListening) "Tap circle to pause" else "Tap circle to speak",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = if (isListening) listeningColor else textSecondary
-            )
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Button(
-                onClick = onContinue,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = accentNavy)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "I need immediate help",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Default.ArrowForward,
-                        contentDescription = null,
-                        tint = Color.White
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AlertScreen(
-    patientMessage: String,
-    timeline: List<TimelineItem>,
-    onBackToEdit: () -> Unit,
-    onDismissAlert: () -> Unit,
-    onSoundAlarm: () -> Unit,
-    onDispatch: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color(0xFF7F1D1D)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = Color(0xFFFBBF24),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "CRITICAL ALERT",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-                    }
-                }
-                TextButton(onClick = onBackToEdit) {
-                    Text("Change my words", color = Color(0xFFFECACA), fontWeight = FontWeight.Bold)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text(
-                text = "URGENT: Help me Please",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
-                lineHeight = 34.sp
-            )
-            Text(
-                text = if (patientMessage.isBlank()) "No extra words yet." else patientMessage,
-                fontSize = 16.sp,
-                color = Color(0xFFFEE2E2),
-                modifier = Modifier.padding(top = 8.dp, bottom = 18.dp)
-            )
-
-            Text(
-                text = "RECENT EVENTS",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFFECACA),
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            timeline.forEach { item ->
-                Row(modifier = Modifier.padding(vertical = 4.dp)) {
-                    Text(item.time, color = Color(0xFFFECACA), fontSize = 13.sp, modifier = Modifier.width(84.dp))
-                    Text(item.description, color = Color.White, fontSize = 13.sp)
-                }
-            }
-        }
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Button(
-                onClick = onSoundAlarm,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White)
-            ) {
-                Text("Read my words aloud", color = Color(0xFF7F1D1D), fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            Button(
-                onClick = onDispatch,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7F1D1D))
-            ) {
-                Text("Reach out to my person", color = Color.White, fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            TextButton(
-                onClick = onDismissAlert,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("I'm feeling steadier now", color = Color(0xFFFECACA), fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-
-
-@Composable
-// Notes are stored in the local SQLite notes table. Placeholders show until real notes are saved.
-fun JourneyScreen(
-    look: BunnyLook,
-    onOpenLook: () -> Unit,
-    onUrgent: () -> Unit,
-    onBack: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Daily Journey",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = look.ink
-            )
-            IconButton(onClick = onOpenLook) {
-                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = look.ink)
-            }
-        }
-        Text(
-            text = "A supportive space for your thoughts, one day at a time.",
-            color = look.soft,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        // Morning note placeholder
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            colors = CardDefaults.cardColors(containerColor = look.card),
-            shape = RoundedCornerShape(28.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("AUDIO MEMO", color = look.accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                Text("Morning note", color = look.ink, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 4.dp))
-                Text("A quiet moment to check in.", color = look.soft, modifier = Modifier.padding(top = 4.dp))
-                Text("Today", color = look.soft, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-                Text("Saved", color = look.accent, fontSize = 12.sp)
-            }
-        }
-
-        // What helped today placeholder
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            colors = CardDefaults.cardColors(containerColor = look.card),
-            shape = RoundedCornerShape(28.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("TEXT REFLECTION", color = look.accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                Text("What helped today", color = look.ink, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 4.dp))
-                Text("Small things that made a difference.", color = look.soft, modifier = Modifier.padding(top = 4.dp))
-                Text("Today", color = look.soft, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-                Text("Saved", color = look.accent, fontSize = 12.sp)
-            }
-        }
-
-        // Photo note placeholder
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            colors = CardDefaults.cardColors(containerColor = look.card),
-            shape = RoundedCornerShape(28.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("PHOTO NOTE", color = look.accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                Text("A small photo", color = look.ink, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 4.dp))
-                Text("Captured a little moment of calm.", color = look.soft, modifier = Modifier.padding(top = 4.dp))
-                Text("Today", color = look.soft, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-                Text("Saved", color = look.accent, fontSize = 12.sp)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = onUrgent,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C))
-        ) {
-            Text("Urgent Help", color = Color.White, fontWeight = FontWeight.Bold)
-        }
-
-        TextButton(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Back to speak", color = look.soft)
-        }
-    }
-}
-
